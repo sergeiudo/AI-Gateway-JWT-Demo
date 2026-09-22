@@ -14,30 +14,9 @@ Two JWTs are involved, and telling them apart is the key to understanding the de
 
 The **first** is issued by Microsoft and proves who you are. The **second** is issued by this app and tells the gateway what you're allowed to do. The backend is a *token broker*: it consumes a token it trusts and mints a different one the gateway trusts.
 
-```mermaid
-flowchart LR
-    subgraph ID["Identity"]
-        E["Microsoft Entra ID<br/><i>sign-in, app role</i>"]
-        G["Microsoft Graph<br/><i>department</i>"]
-    end
-    subgraph APP["This application"]
-        B["Token broker<br/><i>signs RS256 with private_key.pem</i>"]
-    end
-    subgraph GW["AI gateway"]
-        V["Verify signature<br/><i>against registered JWKS</i>"]
-        R["Conditional config<br/><i>match verified metadata</i>"]
-    end
-    M["Amazon Bedrock"]
+![Identity flows from Microsoft Entra and Graph into a token broker, which signs an RS256 credential that the AI gateway verifies against a registered JWKS before routing to a Bedrock model](assets/architecture.svg)
 
-    E -->|ID token| B
-    G -->|department| B
-    B -->|"JWT: email, role, department, config_id"| V
-    V --> R
-    R -->|model chosen by policy| M
-
-    style B fill:#1d2440,stroke:#c9973f,color:#f3eee5
-    style V fill:#1d2440,stroke:#4fa396,color:#f3eee5
-```
+*The sign-in page renders this live, animating a request end to end for a standard user, an administrator and an exempt account.*
 
 In detail:
 
@@ -79,6 +58,34 @@ Steps 10 and 11 are why this is secure. The claims are readable by anyone — a 
 | **An AI gateway with JWKS auth** | Portkey or Prisma AIRS. You must be able to register a JWKS at the organization level. |
 | **A model provider integration** | This demo uses Amazon Bedrock, configured in the gateway as a provider slug. |
 | **Python 3.11+** | 3.12 recommended. |
+
+---
+
+## Install
+
+```bash
+git clone https://github.com/sergeiudo/AI-Gateway-JWT-Demo
+cd AI-Gateway-JWT-Demo
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then generate the signing keypair. Do this **before** the first `streamlit run` — the app opens both key files at import time with no error handling, so a missing key surfaces as a raw traceback in the browser.
+
+```bash
+python3 generate_keys.py
+```
+
+This writes two halves of one RSA-2048 keypair:
+
+- `private_key.pem` — stays on the backend, **signs** tokens
+- `jwks.json` — the public half, handed to the gateway, **verifies** tokens
+
+Re-running the script overwrites both and generates a new `kid`. If you do, you must re-register the new `jwks.json` or every token will fail.
+
+The remaining setup is configuration in three places — Entra, the gateway, and `.env` — then you can run it.
 
 ---
 
@@ -139,28 +146,25 @@ Department is not a default token claim, which is why the app fetches it from Gr
 
 ---
 
-## Signing keys
-
-```bash
-python3 generate_keys.py
-```
-
-This writes two halves of one RSA-2048 keypair:
-
-- `private_key.pem` — stays on the backend, **signs** tokens
-- `jwks.json` — the public half, given to the gateway, **verifies** tokens
-
-Register the contents of `jwks.json` in your gateway under organization-level JWT/JWKS authentication.
-
-> **Copy it with `pbcopy < jwks.json`, not by selecting text in a terminal.** The `n` value is a single 342-character line and terminal pagers clip it. A truncated modulus is a *different key*, and every request will fail with an opaque 401. If the value you pasted ends in `$`, it was clipped.
-
-Re-running `generate_keys.py` overwrites both files and generates a new `kid`. If you do, you must re-upload the new `jwks.json` or all tokens will fail.
-
----
-
 ## Gateway configuration
 
-Set up a provider integration (this demo uses Amazon Bedrock) and note its slug, e.g. `@your-bedrock`. Then create a conditional config and note its `pc-...` id.
+### 1. Register the public key
+
+Paste the contents of `jwks.json` into your gateway under organization-level JWT/JWKS authentication, and note your **organisation ID** while you're on that page — you'll need it for `PORTKEY_ORG_ID`, and it's usually shown alongside.
+
+```bash
+pbcopy < jwks.json
+```
+
+> **Use that command rather than selecting text in a terminal.** The `n` value is a single 342-character line and terminal pagers clip it. A truncated modulus is a *different key*, and every request then fails with an opaque 401. If what you pasted ends in `$`, it was clipped.
+
+### 2. Add a provider integration
+
+Set up your model provider — this demo uses Amazon Bedrock — and note its slug, e.g. `@your-bedrock`.
+
+### 3. Create the routing config
+
+Create a conditional config and note its `pc-...` id.
 
 ```json
 {
@@ -229,16 +233,13 @@ The app keeps a copy of this JSON in `GATEWAY_CONFIG` and derives its own UI fro
 
 ---
 
-## Configuration
+## Environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Then fill in `.env`:
+Then fill it in:
 
 | Variable | Notes |
 |---|---|
