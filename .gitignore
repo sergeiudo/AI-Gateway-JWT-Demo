@@ -1,0 +1,5 @@
+.env
+private_key.pem
+jwks.json
+.venv/
+__pycache__/

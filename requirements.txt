@@ -1,0 +1,8 @@
+streamlit
+msal
+pyjwt
+cryptography
+portkey-ai
+requests
+python-dotenv
+
