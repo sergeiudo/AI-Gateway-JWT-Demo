@@ -67,10 +67,10 @@
   <rect x="742" y="44" width="238" height="200" rx="5" fill="#1A2038" stroke="#2C3557"/>
   <text x="758" y="66" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.5" letter-spacing="1.7" fill="#98A1BE">MODELS</text>
   <g font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="13">
-    <text x="758" y="88" fill="#4FA396" font-weight="600">Claude 3 Haiku</text>
+    <text x="758" y="88" fill="#4FA396" font-weight="600">Claude Haiku 4.5</text>
     <text x="758" y="122" fill="#C9973F" font-weight="600">Claude Opus 4.8</text>
     <text x="758" y="156" fill="#CED4E6">Claude Sonnet 5</text>
-    <text x="758" y="190" fill="#98A1BE">and 7 more models</text>
+    <text x="758" y="190" fill="#98A1BE">and 6 more models</text>
   </g>
   <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" text-anchor="end">
     <text x="964" y="88" fill="#4FA396">standard users</text>

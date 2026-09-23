@@ -58,7 +58,6 @@ if missing_vars:
 # Model ids for the provider integration named in PORTKEY_PROVIDER. Newer Anthropic and
 # Meta models are only invocable through a cross-region inference profile, hence us. ids.
 AVAILABLE_MODELS = {
-    "Claude 3 Haiku": "anthropic.claude-3-haiku-20240307-v1:0",
     "Claude Haiku 4.5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     "Claude Sonnet 5": "us.anthropic.claude-sonnet-5",
     "Claude Opus 4.8": "us.anthropic.claude-opus-4-8",
@@ -117,7 +116,7 @@ GATEWAY_CONFIG = {
         {
             "name": "user-haiku",
             "provider": PORTKEY_PROVIDER,
-            "override_params": {"model": "anthropic.claude-3-haiku-20240307-v1:0"},
+            "override_params": {"model": "us.anthropic.claude-haiku-4-5-20251001-v1:0"},
         },
     ],
 }
@@ -1030,10 +1029,10 @@ text { font-family: 'Instrument Sans', sans-serif; fill: #F3EEE5; }
   <!-- targets -->
   <rect class="panel" x="742" y="44" width="238" height="200" rx="5"/>
   <text class="eye" x="758" y="66">Models · __PROVIDER__</text>
-  <text class="row-t" id="m0" x="758" y="88">Claude 3 Haiku</text>
+  <text class="row-t" id="m0" x="758" y="88">Claude Haiku 4.5</text>
   <text class="row-t" id="m1" x="758" y="122">Claude Opus 4.8</text>
   <text class="row-t" id="m2" x="758" y="156">Claude Sonnet 5</text>
-  <text class="row-t" id="m3" x="758" y="190">and 7 more models</text>
+  <text class="row-t" id="m3" x="758" y="190">and 6 more models</text>
 
   <rect class="panel" x="742" y="262" width="238" height="82" rx="5"/>
   <text class="eye" x="758" y="284">Trust anchor</text>
@@ -1052,7 +1051,7 @@ const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const SCENARIOS = [
   { tag: "Standard user", win: 0,
-    note: "<b>bob@</b> picks Claude Sonnet 5. The signed token says <b>user_role: User</b>, so the gateway replaces the choice and answers with <b>Claude 3 Haiku</b>." },
+    note: "<b>bob@</b> picks Claude Sonnet 5. The signed token says <b>user_role: User</b>, so the gateway replaces the choice and answers with <b>Claude Haiku 4.5</b>." },
   { tag: "Administrator", win: 1,
     note: "<b>alice@</b> picks Claude Sonnet 5. The token says <b>user_role: Admin</b>, so the policy pins the request to <b>Claude Opus 4.8</b>." },
   { tag: "Exempt account", win: 2,
