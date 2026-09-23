@@ -181,10 +181,10 @@ Create a conditional config and note its `pc-...` id.
       },
       {
         "query": { "metadata.user_role": { "$eq": "User" } },
-        "then": "user-kimi"
+        "then": "user-haiku"
       }
     ],
-    "default": "user-kimi"
+    "default": "user-haiku"
   },
   "targets": [
     {
@@ -197,9 +197,9 @@ Create a conditional config and note its `pc-...` id.
       "override_params": { "model": "us.anthropic.claude-opus-4-8" }
     },
     {
-      "name": "user-kimi",
+      "name": "user-haiku",
       "provider": "@your-bedrock",
-      "override_params": { "model": "moonshotai.kimi-k2.5" }
+      "override_params": { "model": "anthropic.claude-3-haiku-20240307-v1:0" }
     }
   ]
 }
@@ -214,8 +214,8 @@ flowchart TD
     C1 -->|no| C2{"user_role == Admin?"}
     C2 -->|yes| T2["<b>admin-opus</b><br/>forced to Claude Opus 4.8"]
     C2 -->|no| C3{"user_role == User?"}
-    C3 -->|yes| T3["<b>user-kimi</b><br/>forced to Kimi K2.5"]
-    C3 -->|no| T4["<b>default</b><br/>falls through to user-kimi"]
+    C3 -->|yes| T3["<b>user-haiku</b><br/>forced to Claude 3 Haiku"]
+    C3 -->|no| T4["<b>default</b><br/>falls through to user-haiku"]
 
     style T1 fill:#1d2440,stroke:#4fa396,color:#f3eee5
     style T2 fill:#1d2440,stroke:#c9973f,color:#f3eee5

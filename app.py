@@ -3,6 +3,8 @@ import time
 import json
 import html
 import base64
+import secrets
+import urllib.parse
 from pathlib import Path
 import jwt
 import msal
@@ -53,15 +55,19 @@ if missing_vars:
 # ==========================================
 # AVAILABLE MODELS LIST
 # ==========================================
+# Model ids for the provider integration named in PORTKEY_PROVIDER. Newer Anthropic and
+# Meta models are only invocable through a cross-region inference profile, hence us. ids.
 AVAILABLE_MODELS = {
-    "Kimi K2.5": "moonshotai.kimi-k2.5",
-    "Claude Opus 5": "anthropic.claude-opus-5",
-    "Claude Sonnet 5": "anthropic.claude-sonnet-5",
-    "GPT-6 Astra": "openai.gpt-6-astra",
-    "Claude Opus 4.8": "us.anthropic.claude-opus-4-8",
     "Claude 3 Haiku": "anthropic.claude-3-haiku-20240307-v1:0",
+    "Claude Haiku 4.5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "Claude Sonnet 5": "us.anthropic.claude-sonnet-5",
+    "Claude Opus 4.8": "us.anthropic.claude-opus-4-8",
+    "Llama 4 Maverick": "us.meta.llama4-maverick-17b-instruct-v1:0",
+    "Mistral Large 3": "mistral.mistral-large-3-675b-instruct",
+    "GLM 5": "zai.glm-5",
+    "MiniMax M2.5": "minimax.minimax-m2.5",
+    "Nova Micro": "us.amazon.nova-micro-v1:0",
     "Nemotron Nano 12B": "nvidia.nemotron-nano-12b-v2",
-    "Claude 3.5 Sonnet v2": "anthropic.claude-3-5-sonnet-20241022-v2:0",
 }
 
 MODEL_LABELS = {model_id: label for label, model_id in AVAILABLE_MODELS.items()}
@@ -92,10 +98,10 @@ GATEWAY_CONFIG = {
             },
             {
                 "query": {"metadata.user_role": {"$eq": "User"}},
-                "then": "user-kimi",
+                "then": "user-haiku",
             },
         ],
-        "default": "user-kimi",
+        "default": "user-haiku",
     },
     "targets": (
         [{"name": "unrestricted", "provider": PORTKEY_PROVIDER}]
@@ -109,9 +115,9 @@ GATEWAY_CONFIG = {
             "override_params": {"model": "us.anthropic.claude-opus-4-8"},
         },
         {
-            "name": "user-kimi",
+            "name": "user-haiku",
             "provider": PORTKEY_PROVIDER,
-            "override_params": {"model": "moonshotai.kimi-k2.5"},
+            "override_params": {"model": "anthropic.claude-3-haiku-20240307-v1:0"},
         },
     ],
 }
@@ -156,7 +162,14 @@ with open(PRIVATE_KEY_PATH, "r") as f:
     PRIVATE_KEY_PEM = f.read()
 
 with open(JWKS_PATH, "r") as f:
-    KID = json.load(f)["keys"][0]["kid"]
+    JWKS_DOC = json.load(f)
+JWKS_KEY = JWKS_DOC["keys"][0]
+KID = JWKS_KEY["kid"]
+
+# Authorization requests are recorded here rather than in session state: the redirect to
+# Microsoft and back is a full page navigation, so the browser session that built the URL
+# is not the one that handles the callback. Keyed by the state we generate.
+AUTH_REQUESTS: dict = {}
 
 msal_app = msal.ConfidentialClientApplication(
     AZURE_CLIENT_ID,
@@ -202,6 +215,58 @@ def token_lifetime(token: str):
         return max(0, int((claims["exp"] - time.time()) // 60))
     except Exception:
         return None
+
+
+# ==========================================
+# TOKEN LIFECYCLE CAPTURE
+#
+# Everything below records the real artifacts moving through the app so the UI can show
+# them. It is deliberately verbose: this is a teaching demo, not a production posture.
+# The one thing never captured is AZURE_CLIENT_SECRET, which only ever travels in the
+# back-channel POST and is not part of any artifact.
+# ==========================================
+def b64url_decode(segment: str) -> bytes:
+    return base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+
+
+def split_jwt(token: str) -> dict:
+    """Breaks a JWT into the parts a verifier actually works with."""
+    header_b64, payload_b64, signature_b64 = token.split(".")
+    return {
+        "header": json.loads(b64url_decode(header_b64)),
+        "payload": json.loads(b64url_decode(payload_b64)),
+        "header_b64": header_b64,
+        "payload_b64": payload_b64,
+        "signature_b64": signature_b64,
+        "signing_input": f"{header_b64}.{payload_b64}",
+        "signature_bytes": len(b64url_decode(signature_b64)),
+        "raw": token,
+    }
+
+
+def epoch(value):
+    try:
+        return time.strftime("%H:%M:%S", time.localtime(int(value)))
+    except Exception:
+        return str(value)
+
+
+def record_stage(key: str, data: dict, started: float = None) -> None:
+    stages = st.session_state.setdefault("lifecycle", {})
+    stages[key] = {
+        "at": time.time(),
+        "elapsed_ms": None if started is None else round((time.time() - started) * 1000),
+        "data": data,
+    }
+
+
+def clear_lifecycle() -> None:
+    st.session_state.lifecycle = {}
+    st.session_state.lifecycle_calls = []
+
+
+def stage(key: str):
+    return st.session_state.get("lifecycle", {}).get(key)
 
 
 # ==========================================
@@ -420,6 +485,60 @@ html, body, [data-testid="stAppViewContainer"] {
 .walk b { color: var(--brass); }
 .cfg-note { font-size: .76rem; line-height: 1.6; color: var(--ivory-dim); margin: 0; }
 
+/* ---------- lifecycle inspector ---------- */
+.stage-meta {
+  font-family: 'IBM Plex Mono', monospace; font-size: .58rem;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--ivory-dim);
+  margin-bottom: .6rem;
+}
+.anat {
+  border: 1px solid var(--ink-line); border-radius: 3px;
+  background: #12172A; padding: .75rem .85rem; margin-bottom: 1rem;
+}
+.anat-cap {
+  font-family: 'IBM Plex Mono', monospace; font-size: .57rem;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--ivory-dim);
+  margin-bottom: .55rem;
+}
+.anat-row { display: flex; gap: .6rem; align-items: baseline; margin-bottom: .35rem; }
+.anat-k {
+  flex: 0 0 68px; font-family: 'IBM Plex Mono', monospace; font-size: .58rem;
+  letter-spacing: .1em; text-transform: uppercase; text-align: right;
+}
+.anat-k.h { color: var(--verdigris); }
+.anat-k.p { color: var(--ivory); }
+.anat-k.s { color: var(--brass); }
+.anat-row code {
+  font-family: 'IBM Plex Mono', monospace; font-size: .68rem; line-height: 1.5;
+  word-break: break-all; color: #CED4E6; background: none; padding: 0;
+}
+.anat-row:nth-child(2) code { color: var(--verdigris); }
+.anat-row:nth-child(4) code { color: var(--brass); }
+.anat-note {
+  font-size: .7rem; color: var(--ivory-dim); margin-top: .6rem;
+  padding-top: .55rem; border-top: 1px solid var(--ink-line); line-height: 1.55;
+}
+.anat-note code { font-size: .68rem; color: var(--ivory); background: none; }
+
+.kv { border: 1px solid var(--ink-line); border-radius: 3px; margin-bottom: 1rem; }
+.kv-row {
+  display: flex; gap: 1rem; padding: .4rem .8rem;
+  border-bottom: 1px solid var(--ink-line);
+}
+.kv-row:last-child { border-bottom: 0; }
+.kv-k {
+  flex: 0 0 210px; font-family: 'IBM Plex Mono', monospace; font-size: .62rem;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ivory-dim);
+}
+.kv-v {
+  font-family: 'IBM Plex Mono', monospace; font-size: .72rem;
+  color: var(--ivory); word-break: break-all;
+}
+[data-testid="stTabs"] button[role="tab"] {
+  font-family: 'IBM Plex Mono', monospace !important; font-size: .64rem !important;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+
 /* ---------- buttons ---------- */
 .stButton > button {
   font-family: 'IBM Plex Mono', monospace !important;
@@ -579,6 +698,199 @@ def render_config_panel(expanded: bool = False) -> None:
         )
 
 
+def jwt_anatomy(parts: dict, caption: str) -> str:
+    """Shows a token as the three segments a verifier separates it into."""
+    return f"""
+<div class="anat">
+  <div class="anat-cap">{esc(caption)}</div>
+  <div class="anat-row"><span class="anat-k h">header</span><code>{esc(parts['header_b64'])}</code></div>
+  <div class="anat-row"><span class="anat-k p">payload</span><code>{esc(parts['payload_b64'])}</code></div>
+  <div class="anat-row"><span class="anat-k s">signature</span><code>{esc(parts['signature_b64'])}</code></div>
+  <div class="anat-note">Signed input is <code>header.payload</code> &mdash;
+  {len(parts['signing_input'])} characters hashed with SHA-256, then RSA-signed into
+  {parts['signature_bytes']} bytes.</div>
+</div>"""
+
+
+def kv(rows: dict) -> str:
+    cells = "".join(
+        f'<div class="kv-row"><span class="kv-k">{esc(k)}</span>'
+        f'<span class="kv-v">{esc(v)}</span></div>'
+        for k, v in rows.items()
+    )
+    return f'<div class="kv">{cells}</div>'
+
+
+def stage_meta(entry: dict) -> str:
+    when = time.strftime("%H:%M:%S", time.localtime(entry["at"]))
+    took = "" if entry["elapsed_ms"] is None else f" &nbsp;·&nbsp; took {entry['elapsed_ms']} ms"
+    return f'<div class="stage-meta">captured {when}{took}</div>'
+
+
+def render_lifecycle_inspector() -> None:
+    stages = st.session_state.get("lifecycle", {})
+    calls = st.session_state.get("lifecycle_calls", [])
+    if not stages:
+        return
+
+    with st.expander("Token lifecycle — every artifact from this session", expanded=False):
+        st.markdown(
+            '<p class="cfg-note">Real values captured from this sign-in, not examples. '
+            'The client secret is the one thing never recorded: it travels only in the '
+            'back-channel POST and never becomes part of an artifact.</p>',
+            unsafe_allow_html=True,
+        )
+        tabs = st.tabs([
+            "1 · Authorize", "2 · Callback", "3 · Exchange",
+            "4 · Claims", "5 · Graph", "6 · Minting", "7 · Gateway",
+        ])
+
+        with tabs[0]:
+            entry = stage("authorize")
+            if entry:
+                d = entry["data"]
+                st.markdown(stage_meta(entry), unsafe_allow_html=True)
+                if not d["matched_state"]:
+                    st.warning(d["note"])
+                else:
+                    st.caption(d["note"])
+                if d.get("url"):
+                    st.code(d["url"], language="text")
+                    st.markdown("**Query parameters Microsoft received**")
+                    st.code(json.dumps(d["params"], indent=2), language="json")
+
+        with tabs[1]:
+            entry = stage("callback")
+            if entry:
+                d = entry["data"]
+                st.markdown(stage_meta(entry), unsafe_allow_html=True)
+                st.caption(d["note"])
+                st.code(d["redirect_url"], language="text")
+                st.markdown(kv({
+                    "authorization code": d["code"],
+                    "code length": f"{d['code_length']} chars",
+                    "state returned": d["state"] or "none",
+                    "state matches our request": "yes" if d["state_matches_request"] else "no",
+                }), unsafe_allow_html=True)
+
+        with tabs[2]:
+            entry = stage("exchange")
+            if entry:
+                d = entry["data"]
+                st.markdown(stage_meta(entry), unsafe_allow_html=True)
+                st.caption(d["note"])
+                if d.get("error"):
+                    st.error(f"{d['error']}: {d.get('error_description')}")
+                st.markdown(kv({
+                    "token type": d.get("token_type") or "-",
+                    "expires in": f"{d.get('expires_in')} s",
+                    "scope granted": d.get("scope") or "-",
+                    "keys returned": ", ".join(d.get("keys_returned", [])),
+                }), unsafe_allow_html=True)
+                for label, key in (("ID token", "id_token"), ("Graph access token", "access_token")):
+                    parts = d.get(key)
+                    if not parts:
+                        continue
+                    st.markdown(f"**{label}**")
+                    st.markdown(jwt_anatomy(parts, f"{label} as issued by Microsoft"),
+                                unsafe_allow_html=True)
+                    st.code(json.dumps(parts["header"], indent=2), language="json")
+                    st.code(json.dumps(parts["payload"], indent=2), language="json")
+
+        with tabs[3]:
+            entry = stage("claims")
+            if entry:
+                d = entry["data"]
+                st.markdown(stage_meta(entry), unsafe_allow_html=True)
+                st.caption(d["note"])
+                st.markdown(kv({
+                    "email resolved from claim": d["email_resolved_from"] or "none matched",
+                    "email": d["email"],
+                    "subject": d["sub"],
+                    "roles claim present": "yes" if d["roles_claim_present"] else "no",
+                    "roles": ", ".join(d["roles_claim"]) or "empty",
+                    "role decided": d["role_decision"],
+                    "audience": str(d["audience"]),
+                    "issued / expires": f"{d['issued_at']} - {d['expires_at']}",
+                }), unsafe_allow_html=True)
+                st.markdown("**Every claim in the ID token**")
+                st.code(json.dumps(d["all_id_token_claims"], indent=2, default=str), language="json")
+
+        with tabs[4]:
+            entry = stage("graph")
+            if entry:
+                d = entry["data"]
+                st.markdown(stage_meta(entry), unsafe_allow_html=True)
+                st.caption(d["note"])
+                st.markdown(kv({
+                    "status": str(d.get("status_code", d.get("exception", "-"))),
+                    "department used": d["department_used"],
+                }), unsafe_allow_html=True)
+                if d.get("request_url"):
+                    st.code(f"GET {d['request_url']}", language="text")
+                    st.markdown("**Request headers**")
+                    st.code(json.dumps(d["request_headers"], indent=2), language="json")
+                    st.markdown("**Response body**")
+                    st.code(json.dumps(d["response_body"], indent=2, default=str), language="json")
+
+        with tabs[5]:
+            entry = stage("mint")
+            if entry:
+                d = entry["data"]
+                st.markdown(stage_meta(entry), unsafe_allow_html=True)
+                st.caption(d["note"])
+                st.markdown(jwt_anatomy(d["jwt"], "Minted by this application"),
+                            unsafe_allow_html=True)
+                st.markdown("**JOSE header**")
+                st.code(json.dumps(d["jwt"]["header"], indent=2), language="json")
+                st.markdown("**Payload — the claims the gateway will route on**")
+                st.code(json.dumps(d["jwt"]["payload"], indent=2), language="json")
+                st.markdown("**Public key the gateway verifies against**")
+                st.code(json.dumps(d["jwks_entry"], indent=2), language="json")
+                st.markdown(kv({
+                    "kid in token header": d["kid_in_header"],
+                    "kid in registered JWKS": d["kid_in_jwks"],
+                    "match": "yes" if d["kid_match"] else "NO — every request will 401",
+                    "modulus length": f"{d['modulus_length']} chars"
+                                      f"{'' if d['modulus_length'] == 342 else '  (expected 342 — truncated?)'}",
+                    "private key": d["private_key_path"],
+                }), unsafe_allow_html=True)
+
+        with tabs[6]:
+            if not calls:
+                st.caption("Send a message and the request and response land here.")
+            else:
+                labels = [
+                    f"{i + 1}. {c['model_sent'].split('/')[-1]} → "
+                    f"{c.get('served_model') or c.get('outcome', '?')}"
+                    for i, c in enumerate(calls)
+                ]
+                pick = st.selectbox("Request", options=list(range(len(calls)))[::-1],
+                                    format_func=lambda i: labels[i])
+                c = calls[pick]
+                st.caption(c.get("note", ""))
+                st.markdown(kv({
+                    "outcome": c.get("outcome", "-"),
+                    "model requested": c["model_sent"],
+                    "model served": str(c.get("served_model", "-")),
+                    "overridden by policy": "yes" if c.get("model_was_overridden") else "no",
+                    "round trip": f"{c.get('elapsed_ms', '-')} ms",
+                    "response id": str(c.get("response_id", "-")),
+                }), unsafe_allow_html=True)
+                if c.get("error"):
+                    st.error(c["error"])
+                st.markdown("**Request headers — the JWT is the API key**")
+                st.code(json.dumps(c.get("request_headers", {}), indent=2), language="json")
+                st.markdown("**Request body**")
+                st.code(json.dumps(c.get("request_body", {}), indent=2, default=str), language="json")
+                if c.get("response_headers"):
+                    st.markdown("**Response headers from the gateway**")
+                    st.code(json.dumps(c["response_headers"], indent=2, default=str), language="json")
+                if c.get("usage"):
+                    st.markdown("**Usage**")
+                    st.code(json.dumps(c["usage"], indent=2, default=str), language="json")
+
+
 @st.cache_data(show_spinner=False)
 def data_uri(path: str) -> str:
     """Inlines a local image so the browser needs no extra static route."""
@@ -691,7 +1003,6 @@ text { font-family: 'Instrument Sans', sans-serif; fill: #F3EEE5; }
   <path id="t1" class="wire" d="M 648 228 C 700 228, 700 118, 742 118"/>
   <path id="t2" class="wire" d="M 648 228 C 700 228, 700 152, 742 152"/>
   <path id="t3" class="wire" d="M 648 228 C 700 228, 700 186, 742 186"/>
-  <path id="t4" class="wire" d="M 648 228 C 700 228, 700 220, 742 220"/>
 
   <!-- identity cards -->
   <g><rect id="c0" class="card" x="20" y="52" width="156" height="48" rx="4"/>
@@ -719,11 +1030,10 @@ text { font-family: 'Instrument Sans', sans-serif; fill: #F3EEE5; }
   <!-- targets -->
   <rect class="panel" x="742" y="44" width="238" height="200" rx="5"/>
   <text class="eye" x="758" y="66">Models · __PROVIDER__</text>
-  <text class="row-t" id="m0" x="758" y="88">Kimi K2.5</text>
+  <text class="row-t" id="m0" x="758" y="88">Claude 3 Haiku</text>
   <text class="row-t" id="m1" x="758" y="122">Claude Opus 4.8</text>
-  <text class="row-t" id="m2" x="758" y="156">Claude Opus 5</text>
-  <text class="row-t" id="m3" x="758" y="190">Claude Sonnet 5</text>
-  <text class="row-t" id="m4" x="758" y="224">GPT-6 Astra</text>
+  <text class="row-t" id="m2" x="758" y="156">Claude Sonnet 5</text>
+  <text class="row-t" id="m3" x="758" y="190">and 7 more models</text>
 
   <rect class="panel" x="742" y="262" width="238" height="82" rx="5"/>
   <text class="eye" x="758" y="284">Trust anchor</text>
@@ -742,11 +1052,11 @@ const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const SCENARIOS = [
   { tag: "Standard user", win: 0,
-    note: "<b>bob@</b> picks Claude Opus 5. The signed token says <b>user_role: User</b>, so the gateway replaces the choice and answers with <b>Kimi K2.5</b>." },
+    note: "<b>bob@</b> picks Claude Sonnet 5. The signed token says <b>user_role: User</b>, so the gateway replaces the choice and answers with <b>Claude 3 Haiku</b>." },
   { tag: "Administrator", win: 1,
-    note: "<b>alice@</b> picks Claude Opus 5. The token says <b>user_role: Admin</b>, so the policy pins the request to <b>Claude Opus 4.8</b>." },
+    note: "<b>alice@</b> picks Claude Sonnet 5. The token says <b>user_role: Admin</b>, so the policy pins the request to <b>Claude Opus 4.8</b>." },
   { tag: "Exempt account", win: 2,
-    note: "<b>__EXEMPT__</b> picks Claude Opus 5. This address is exempt from routing, so the gateway forwards the request untouched to <b>Claude Opus 5</b>." },
+    note: "<b>__EXEMPT__</b> picks Claude Sonnet 5. This address is exempt from routing, so the gateway forwards the request untouched to <b>Claude Sonnet 5</b>." },
 ];
 
 let run = 0, timer = null, current = 0;
@@ -769,9 +1079,9 @@ function travel(pathId, dotId, ms, token) {
 
 function reset() {
   ["c0","c1","c2","brk","gw"].forEach(i => $(i).classList.remove("lit","hot"));
-  ["w0","w1","w2","wg","t0","t1","t2","t3","t4"].forEach(i => $(i).classList.remove("live","route"));
+  ["w0","w1","w2","wg","t0","t1","t2","t3"].forEach(i => $(i).classList.remove("live","route"));
   for (let i = 0; i < 6; i++) { $("p"+i).classList.remove("on"); $("p"+i+"t").classList.remove("on"); }
-  for (let i = 0; i < 5; i++) $("m"+i).classList.remove("win");
+  for (let i = 0; i < 4; i++) $("m"+i).classList.remove("win");
   $("dotA").setAttribute("cx", -20); $("dotB").setAttribute("cx", -20);
 }
 
@@ -860,32 +1170,111 @@ if "messages" not in st.session_state:
 query_params = st.query_params
 if "code" in query_params and not st.session_state.user:
     auth_code = query_params["code"]
+    returned_state = query_params.get("state")
+    clear_lifecycle()
 
+    # Stage 1 — the authorize request that started this, looked up by the state we minted.
+    # If the sign-in page was served by an earlier process the record is gone, so fall back
+    # to rebuilding an equivalent URL and say so rather than showing an empty tab.
+    originating = AUTH_REQUESTS.get(returned_state)
+    if originating:
+        authorize_url = originating["url"]
+        authorize_note = "Built by MSAL and opened in the browser. No token exists yet."
+    else:
+        authorize_url = msal_app.get_authorization_request_url(
+            scopes=["User.Read"], redirect_uri=REDIRECT_URI,
+            prompt="select_account", state=returned_state or "unavailable",
+        )
+        authorize_note = (
+            "Rebuilt for display: the sign-in page was served by an earlier app process, "
+            "so the original request was not in memory. Every parameter is identical "
+            "except the nonce. Sign out and in again to capture a live one."
+        )
+    record_stage("authorize", {
+        "matched_state": bool(originating),
+        "url": authorize_url,
+        "params": {
+            k: v[0] if len(v) == 1 else v
+            for k, v in urllib.parse.parse_qs(
+                urllib.parse.urlparse(authorize_url).query).items()
+        },
+        "note": authorize_note,
+    })
+
+    # Stage 2 — what Microsoft handed back on the redirect
+    record_stage("callback", {
+        "redirect_url": f"{REDIRECT_URI}?{urllib.parse.urlencode(dict(query_params))}",
+        "code": auth_code,
+        "code_length": len(auth_code),
+        "state": returned_state,
+        "state_matches_request": bool(originating),
+        "note": "The code is a single-use voucher, not a token. It is worthless without "
+                "the client secret, which is why the next step happens server side.",
+    })
+
+    exchange_started = time.time()
     result = msal_app.acquire_token_by_authorization_code(
         code=auth_code,
         scopes=["User.Read"],
         redirect_uri=REDIRECT_URI
     )
 
+    # Stage 3 — everything the token endpoint returned
+    id_token_raw = result.get("id_token")
+    access_token_raw = result.get("access_token")
+    record_stage("exchange", {
+        "error": result.get("error"),
+        "error_description": result.get("error_description"),
+        "keys_returned": sorted(result.keys()),
+        "token_type": result.get("token_type"),
+        "expires_in": result.get("expires_in"),
+        "scope": result.get("scope"),
+        "id_token": split_jwt(id_token_raw) if id_token_raw else None,
+        "access_token": split_jwt(access_token_raw) if access_token_raw else None,
+        "note": "Two tokens arrive. The id token describes the user; the access token is "
+                "addressed to Microsoft Graph. Neither is addressed to the AI gateway.",
+    }, started=exchange_started)
+    
     if "id_token_claims" in result and "access_token" in result:
         claims = result["id_token_claims"]
         access_token = result["access_token"]
-
+        
         # 1. Extract Email
         user_email = (
-            claims.get("preferred_username")
-            or claims.get("email")
+            claims.get("preferred_username") 
+            or claims.get("email") 
             or claims.get("upn")
         )
         user_sub = claims.get("sub")
         user_name = claims.get("name", "User")
-
+        
         # 2. Extract App Role
         assigned_roles = claims.get("roles", [])
         user_role = "Admin" if "Admin" in assigned_roles else "User"
 
+        # Stage 4 — which claims were used, and what was decided from them
+        record_stage("claims", {
+            "all_id_token_claims": claims,
+            "email_resolved_from": next(
+                (c for c in ("preferred_username", "email", "upn") if claims.get(c)), None
+            ),
+            "email": user_email,
+            "sub": user_sub,
+            "roles_claim": assigned_roles,
+            "roles_claim_present": "roles" in claims,
+            "role_decision": user_role,
+            "issued_at": epoch(claims.get("iat")),
+            "expires_at": epoch(claims.get("exp")),
+            "audience": claims.get("aud"),
+            "issuer": claims.get("iss"),
+            "note": "An absent roles claim is not an error here; the code falls back to "
+                    "User, which is why an unassigned account looks like a normal user.",
+        })
+        
         # 3. Fetch Department from Microsoft Graph API ($select parameter included)
         user_department = "General"  # Fallback
+        graph_started = time.time()
+        graph_capture = {"attempted": True}
         try:
             graph_url = "https://graph.microsoft.com/v1.0/me?$select=department,displayName,mail,userPrincipalName"
             graph_response = requests.get(
@@ -893,15 +1282,49 @@ if "code" in query_params and not st.session_state.user:
                 headers={"Authorization": f"Bearer {access_token}"},
                 timeout=5
             )
+            graph_capture.update({
+                "request_url": graph_url,
+                "request_headers": {"Authorization": f"Bearer {access_token}"},
+                "status_code": graph_response.status_code,
+                "response_headers": dict(graph_response.headers),
+                "response_body": (
+                    graph_response.json() if graph_response.headers
+                    .get("content-type", "").startswith("application/json")
+                    else graph_response.text
+                ),
+            })
             if graph_response.status_code == 200:
                 profile_data = graph_response.json()
                 user_department = profile_data.get("department") or "General"
         except Exception as err:
+            graph_capture["exception"] = f"{type(err).__name__}: {err}"
             st.warning(f"Could not fetch department from Graph API: {err}")
-
+        graph_capture["department_used"] = user_department
+        graph_capture["note"] = (
+            "Department is not a token claim, so it costs a round trip. A non-200 here "
+            "falls through to the General fallback without raising."
+        )
+        record_stage("graph", graph_capture, started=graph_started)
+        
         # 4. Mint Portkey RS256 JWT containing Metadata and Locked Config ID
+        mint_started = time.time()
         portkey_jwt = mint_portkey_jwt(user_email, user_sub, user_role, user_department)
 
+        # Stage 5 — the token this app signed, and the key a verifier will need
+        minted = split_jwt(portkey_jwt)
+        record_stage("mint", {
+            "jwt": minted,
+            "jwks_entry": JWKS_KEY,
+            "kid_in_header": minted["header"].get("kid"),
+            "kid_in_jwks": JWKS_KEY.get("kid"),
+            "kid_match": minted["header"].get("kid") == JWKS_KEY.get("kid"),
+            "modulus_length": len(JWKS_KEY.get("n", "")),
+            "private_key_path": PRIVATE_KEY_PATH,
+            "note": "The payload is signed, not encrypted: anyone can read these claims, "
+                    "but altering one invalidates the signature. The gateway finds the "
+                    "right public key by matching kid.",
+        }, started=mint_started)
+        
         st.session_state.user = {
             "name": user_name,
             "email": user_email,
@@ -920,11 +1343,23 @@ if not st.session_state.user:
         '[data-testid="stMainBlockContainer"]{max-width:1460px}</style>',
         unsafe_allow_html=True,
     )
+    auth_state = secrets.token_urlsafe(16)
     auth_url = msal_app.get_authorization_request_url(
         scopes=["User.Read"],
         redirect_uri=REDIRECT_URI,
-        prompt="select_account"
+        prompt="select_account",
+        state=auth_state,
     )
+    AUTH_REQUESTS[auth_state] = {
+        "url": auth_url,
+        "params": {
+            k: v[0] if len(v) == 1 else v
+            for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(auth_url).query).items()
+        },
+        "at": time.time(),
+    }
+    for stale in list(AUTH_REQUESTS)[:-20]:
+        AUTH_REQUESTS.pop(stale, None)
 
     st.markdown(signin_button(auth_url), unsafe_allow_html=True)
     st.markdown(
@@ -1012,6 +1447,7 @@ with st.sidebar:
         st.session_state.user = None
         st.session_state.messages = []
         st.session_state.seal_shown = False
+        clear_lifecycle()
         st.rerun()
 
 # ---------- Masthead + live credential ----------
@@ -1029,6 +1465,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 render_config_panel(expanded=False)
+render_lifecycle_inspector()
 
 # ---------- Conversation ----------
 if not st.session_state.messages:
@@ -1047,8 +1484,12 @@ for message in st.session_state.messages:
         if message.get("served_model"):
             st.markdown(served_stamp(message["served_model"]), unsafe_allow_html=True)
 
+if st.session_state.get("last_error"):
+    st.error(f"The gateway refused this request. {st.session_state.last_error}")
+
 # User Prompt Input
 if prompt := st.chat_input("Send a message"):
+    st.session_state.last_error = None
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -1062,6 +1503,7 @@ if prompt := st.chat_input("Send a message"):
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
+        call = {"prompt": prompt, "model_sent": selected_model}
         try:
             # Construct API payload:
             # 1. Add System Prompt at position 0 (if provided)
@@ -1074,19 +1516,61 @@ if prompt := st.chat_input("Send a message"):
             for msg in recent_messages:
                 payload_messages.append({"role": msg["role"], "content": msg["content"]})
 
+            request_headers = {
+                k: v for k, v in
+                (portkey_client.chat.completions.openai_client.default_headers or {}).items()
+                if isinstance(v, str)
+            }
+            call.update({
+                "request_headers": request_headers,
+                "request_body": {
+                    "model": selected_model,
+                    "messages": payload_messages,
+                    "max_tokens": 512,
+                },
+                "note": "The JWT travels in x-portkey-api-key. The gateway reads "
+                        "portkey_oid from it, loads that org's JWKS, verifies the "
+                        "signature, and only then applies the routing rules.",
+            })
+
+            call_started = time.time()
             with st.spinner("Routing through the gateway"):
                 response = portkey_client.chat.completions.create(
                     model=selected_model,
                     messages=payload_messages,
                     max_tokens=512
                 )
+            call["elapsed_ms"] = round((time.time() - call_started) * 1000)
+
             reply = response.choices[0].message.content
             served_model = getattr(response, "model", None)
+            try:
+                call["response_headers"] = dict(response.get_headers() or {})
+            except Exception as header_err:
+                call["response_headers"] = {"unavailable": str(header_err)}
+            call.update({
+                "outcome": "accepted",
+                "served_model": served_model,
+                "model_was_overridden": served_model not in (None, selected_model)
+                and not selected_model.endswith(str(served_model)),
+                "response_id": getattr(response, "id", None),
+                "usage": getattr(getattr(response, "usage", None), "__dict__", None)
+                or getattr(response, "usage", None),
+                "system_fingerprint": getattr(response, "system_fingerprint", None),
+            })
+            st.session_state.setdefault("lifecycle_calls", []).append(call)
+
             message_placeholder.markdown(reply)
             if served_model:
                 st.markdown(served_stamp(served_model), unsafe_allow_html=True)
             st.session_state.messages.append(
                 {"role": "assistant", "content": reply, "served_model": served_model}
             )
+            # The inspector is drawn above the chat, so it rendered before this call was
+            # recorded. Rerun once so it picks the request up.
+            st.rerun()
         except Exception as e:
-            st.error(f"The gateway refused this request. {str(e)}")
+            call.update({"outcome": "rejected", "error": f"{type(e).__name__}: {e}"})
+            st.session_state.setdefault("lifecycle_calls", []).append(call)
+            st.session_state.last_error = str(e)
+            st.rerun()
