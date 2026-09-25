@@ -5,4 +5,5 @@ cryptography
 portkey-ai
 requests
 python-dotenv
+markdown
 

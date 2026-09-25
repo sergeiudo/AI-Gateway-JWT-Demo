@@ -1,9 +1,37 @@
 [theme]
 base = "dark"
-primaryColor = "#C9973F"
-backgroundColor = "#151A2D"
-secondaryBackgroundColor = "#1D2440"
-textColor = "#F3EEE5"
+primaryColor = "#FFB020"
+backgroundColor = "#0A0C10"
+secondaryBackgroundColor = "#121620"
+textColor = "#EDEFF3"
+borderColor = "#232A38"
+baseRadius = "2px"
+font = "IBM Plex Sans, system-ui, sans-serif"
+codeFont = "JetBrains Mono, ui-monospace, monospace"
+
+[theme.dark]
+primaryColor = "#FFB020"
+backgroundColor = "#0A0C10"
+secondaryBackgroundColor = "#121620"
+textColor = "#EDEFF3"
+borderColor = "#232A38"
+codeBackgroundColor = "#0D1016"
+
+[theme.light]
+primaryColor = "#A85D00"
+backgroundColor = "#F7F7F5"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#17181C"
+borderColor = "#E3E3DE"
+codeBackgroundColor = "#F0F0EC"
+
+[theme.dark.sidebar]
+backgroundColor = "#0D1016"
+borderColor = "#232A38"
+
+[theme.light.sidebar]
+backgroundColor = "#F0F0EC"
+borderColor = "#E3E3DE"
 
 [client]
 toolbarMode = "minimal"

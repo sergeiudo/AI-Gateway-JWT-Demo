@@ -9,6 +9,7 @@ from pathlib import Path
 import jwt
 import msal
 import requests
+import markdown
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
@@ -271,343 +272,446 @@ def stage(key: str):
 # ==========================================
 # DESIGN SYSTEM
 # ==========================================
+# TRACE — near-monochrome. Exactly two chromatic colours exist in either mode, and both
+# mean "the gateway acted on your request": signal for enforcement, alert for refusal.
+# Every text value below is measured at >=4.5:1 against the surface it sits on.
+PALETTES = {
+    "dark": {
+        "void": "#0A0C10", "sunken": "#0D1016", "surface": "#121620", "surface-2": "#171C27",
+        "line": "#232A38", "line-lit": "#39435A",
+        "text": "#EDEFF3", "text-dim": "#8A94A6", "text-faint": "#757E92",
+        "signal": "#FFB020", "on-signal": "#0A0C10",
+        "signal-bg": "rgba(255,176,32,.10)",
+        "signal-glow-0": "rgba(255,176,32,.45)", "signal-glow-1": "rgba(255,176,32,.55)",
+        "alert": "#FF5C5C", "alert-bg": "rgba(255,92,92,.10)",
+    },
+    "light": {
+        "void": "#F7F7F5", "sunken": "#F0F0EC", "surface": "#FFFFFF", "surface-2": "#FAFAF8",
+        "line": "#E3E3DE", "line-lit": "#BFBFB8",
+        "text": "#17181C", "text-dim": "#4A4F5A", "text-faint": "#6B7280",
+        "signal": "#A85D00", "on-signal": "#FFFFFF",
+        "signal-bg": "rgba(168,93,0,.09)",
+        "signal-glow-0": "rgba(168,93,0,.30)", "signal-glow-1": "rgba(168,93,0,.28)",
+        "alert": "#C62828", "alert-bg": "rgba(198,40,40,.08)",
+    },
+}
+
+
+def theme_mode() -> str:
+    """Follow whichever theme Streamlit is actually rendering, so the custom CSS and the
+    built-in widgets can never disagree."""
+    try:
+        return "light" if st.context.theme.type == "light" else "dark"
+    except Exception:
+        return "dark"
+
+
+MODE = theme_mode()
+_TOKENS = "".join(f"  --{k}: {v};\n" for k, v in PALETTES[MODE].items())
+
 THEME = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
-  --ink:        #151A2D;
-  --ink-raised: #1D2440;
-  --ink-line:   #2C3557;
-  --ivory:      #F3EEE5;
-  --ivory-dim:  #98A1BE;
-  --brass:      #C9973F;
-  --verdigris:  #4FA396;
-  --vermilion:  #D4553C;
+__TOKENS__  --sp: 8px;
+  color-scheme: __MODE__;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
-  background: var(--ink);
-  font-family: 'Instrument Sans', system-ui, sans-serif;
+  background: var(--void);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: var(--text);
 }
 [data-testid="stHeader"] { background: transparent; }
-[data-testid="stMainBlockContainer"] { padding-top: 2.2rem; max-width: 980px; }
+[data-testid="stMainBlockContainer"] { padding-top: 1.6rem; max-width: 1040px; }
+::selection { background: var(--signal); color: var(--on-signal); }
 
-/* ---------- credential strip : the signature element ---------- */
-.cred {
-  position: relative; overflow: hidden;
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  border: 1px solid var(--ink-line); border-radius: 3px;
-  background: linear-gradient(180deg, #1A2038, #161B2E);
-  margin-bottom: 1.6rem;
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: .8rem; margin-bottom: 1.6rem;
+  border-bottom: 1px solid var(--line);
 }
-.cred::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .45;
-  background:
-    repeating-radial-gradient(circle at 10% 50%, transparent 0 7px, rgba(201,151,63,.16) 7px 7.7px),
-    repeating-radial-gradient(circle at 90% 50%, transparent 0 9px, rgba(79,163,150,.12) 9px 9.7px);
+.brand {
+  display: flex; align-items: center; gap: .55rem;
+  font-family: 'JetBrains Mono', monospace; font-size: .66rem;
+  letter-spacing: .22em; text-transform: uppercase; color: var(--text-dim);
 }
-.cred.sealing::after {
-  content: ""; position: absolute; top: 0; bottom: 0; width: 26%;
-  background: linear-gradient(90deg, transparent, rgba(243,238,229,.10), transparent);
-  animation: sweep 2.4s cubic-bezier(.22,.61,.36,1) .15s 1 both;
+.brand i {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--signal);
+  font-style: normal; display: inline-block;
 }
-@keyframes sweep { from { transform: translateX(-130%);} to { transform: translateX(260%);} }
-
-.cred-seg {
-  position: relative; padding: .7rem .95rem;
-  border-right: 1px solid var(--ink-line);
-  transition: background .25s ease;
+.whoami {
+  display: flex; align-items: center; gap: .8rem;
+  font-family: 'JetBrains Mono', monospace; font-size: .64rem;
+  letter-spacing: .08em; color: var(--text-faint);
 }
-.cred-seg:last-child { border-right: 0; }
-.cred-seg:hover { background: rgba(243,238,229,.035); }
-.cred-tag {
-  font-family: 'IBM Plex Mono', monospace; font-size: .58rem;
-  letter-spacing: .16em; text-transform: uppercase; color: var(--ivory-dim);
-  display: flex; justify-content: space-between; margin-bottom: .3rem;
-}
-.cred-tag b { font-weight: 500; }
-.cred-val {
-  font-family: 'IBM Plex Mono', monospace; font-size: .74rem;
-  word-break: break-all; line-height: 1.45;
-}
-.seg-h .cred-val { color: var(--verdigris); }
-.seg-p .cred-val { color: var(--ivory); }
-.seg-s .cred-val { color: var(--brass); }
-.seg-h .cred-tag b { color: var(--verdigris); }
-.seg-s .cred-tag b { color: var(--brass); }
-
-/* ---------- masthead ---------- */
-.mast { display: flex; align-items: baseline; gap: .8rem; margin-bottom: .2rem; }
-.mast h1 {
-  font-family: 'Instrument Serif', serif; font-weight: 400;
-  font-size: 2.5rem; letter-spacing: -.01em; color: var(--ivory);
-  margin: 0; line-height: 1;
-}
-.mast .glyph { color: var(--brass); font-size: 1.5rem; }
-.mast-sub {
-  font-family: 'IBM Plex Mono', monospace; font-size: .68rem;
-  letter-spacing: .13em; text-transform: uppercase; color: var(--ivory-dim);
-  margin: .55rem 0 1.5rem;
-}
-.mast-sub span { color: var(--verdigris); }
-
-/* ---------- sidebar ---------- */
-[data-testid="stSidebar"] {
-  background: #12172A; border-right: 1px solid var(--ink-line);
-}
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .7rem; }
-.eyebrow {
-  font-family: 'IBM Plex Mono', monospace; font-size: .58rem;
-  letter-spacing: .18em; text-transform: uppercase; color: var(--ivory-dim);
-  margin: 1.3rem 0 .55rem; display: flex; align-items: center; gap: .55rem;
-}
-.eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--ink-line); }
-
-/* identity plate */
-.plate {
-  border: 1px solid var(--ink-line); border-radius: 3px;
-  background: var(--ink-raised); padding: .85rem .9rem;
-}
-.plate-name { font-size: 1rem; font-weight: 600; color: var(--ivory); line-height: 1.2; }
-.plate-mail {
-  font-family: 'IBM Plex Mono', monospace; font-size: .68rem;
-  color: var(--ivory-dim); word-break: break-all; margin-top: .15rem;
-}
-.plate-rule { height: 1px; background: var(--ink-line); margin: .7rem 0; }
-.plate-claims { display: flex; flex-direction: column; gap: .4rem; }
-.claim { display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
-.claim-k {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--ivory-dim);
-}
-.claim-v { font-size: .78rem; font-weight: 500; color: var(--ivory); text-align: right; }
-
-.seal {
-  display: inline-flex; align-items: center; gap: .35rem;
-  font-family: 'IBM Plex Mono', monospace; font-size: .62rem;
-  letter-spacing: .1em; text-transform: uppercase;
-  padding: .2rem .5rem; border-radius: 2px; border: 1px solid;
-}
-.seal-admin { color: var(--brass); border-color: rgba(201,151,63,.5); background: rgba(201,151,63,.1); }
-.seal-user  { color: var(--verdigris); border-color: rgba(79,163,150,.45); background: rgba(79,163,150,.1); }
-
-/* policy ledger */
-.ledger { border: 1px solid var(--ink-line); border-radius: 3px; overflow: hidden; }
-.ledger-row { padding: .55rem .8rem; display: flex; flex-direction: column; gap: .12rem; }
-.ledger-k {
-  font-family: 'IBM Plex Mono', monospace; font-size: .57rem;
-  letter-spacing: .14em; text-transform: uppercase; color: var(--ivory-dim);
-}
-.ledger-v { font-size: .84rem; font-weight: 500; color: var(--ivory); }
-.ledger-row.struck .ledger-v { color: var(--ivory-dim); text-decoration: line-through; text-decoration-color: var(--vermilion); }
-.ledger-row.held { background: rgba(201,151,63,.09); border-top: 1px solid var(--ink-line); }
-.ledger-row.held .ledger-v { color: var(--brass); }
-.ledger-row.pass { background: rgba(79,163,150,.08); }
-.ledger-row.pass .ledger-v { color: var(--verdigris); }
-.ledger-note {
-  font-size: .68rem; color: var(--ivory-dim); line-height: 1.45;
-  padding: .5rem .8rem .6rem; border-top: 1px solid var(--ink-line);
+.whoami b { color: var(--text); font-weight: 500; }
+.whoami .tag {
+  border: 1px solid var(--line-lit); border-radius: 2px;
+  padding: .12rem .45rem; text-transform: uppercase; letter-spacing: .12em;
+  font-size: .58rem; color: var(--text-dim);
 }
 
-/* ---------- chat ---------- */
-[data-testid="stChatMessage"] {
-  background: transparent; border: 1px solid var(--ink-line);
-  border-radius: 3px; padding: .9rem 1rem; margin-bottom: .75rem;
+/* ---------- the spine ---------- */
+.trace { position: relative; padding-left: 2rem; }
+.trace::before {
+  content: ""; position: absolute; left: 5px; top: 6px; bottom: 0;
+  width: 1px; background: var(--line);
 }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
-  background: rgba(79,163,150,.05); border-color: rgba(79,163,150,.22);
+.node { position: relative; padding-bottom: 1.5rem; }
+.node::before {
+  content: ""; position: absolute; left: -2rem; top: 4px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--void); border: 1px solid var(--line-lit);
+  box-sizing: border-box;
 }
-[data-testid="stChatInput"] textarea { font-family: 'Instrument Sans', sans-serif; }
+.node.lit::before { border-color: var(--signal); background: var(--signal); }
+.node.bad::before { border-color: var(--alert); background: var(--alert); }
+.node.open::before { background: var(--text-faint); border-color: var(--text-faint); }
 
-.stamp {
-  display: inline-flex; align-items: center; gap: .45rem; margin-top: .7rem;
-  font-family: 'IBM Plex Mono', monospace; font-size: .62rem;
-  letter-spacing: .09em; padding: .22rem .55rem; border-radius: 2px;
-  border: 1px dashed rgba(201,151,63,.45); color: var(--brass);
-  background: rgba(201,151,63,.07);
+.node-head {
+  display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap;
+  font-family: 'JetBrains Mono', monospace; font-size: .62rem;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--text-dim);
+  margin-bottom: .4rem;
 }
-.stamp .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
+.node-head .t { color: var(--text); }
+.node.lit .node-head .t { color: var(--signal); }
+.node.bad .node-head .t { color: var(--alert); }
+.node-head .when { color: var(--text-faint); letter-spacing: .1em; }
+.node-head .rule { flex: 1; height: 1px; background: var(--line); }
 
-.empty {
-  border: 1px dashed var(--ink-line); border-radius: 3px;
-  padding: 2.2rem 1.6rem; text-align: center; color: var(--ivory-dim);
+.node-body {
+  font-family: 'JetBrains Mono', monospace; font-size: .74rem;
+  line-height: 1.7; color: var(--text-dim);
 }
-.empty b { display: block; color: var(--ivory); font-size: 1rem; font-weight: 600; margin-bottom: .35rem; }
+.node-body b { color: var(--text); font-weight: 500; }
+.node-body .sig { color: var(--signal); }
+.node-body .strike { text-decoration: line-through; color: var(--text-faint); }
+
+/* the one moment of colour: policy overrode the request */
+.enforce {
+  display: inline-flex; align-items: center; gap: .5rem; margin-top: .5rem;
+  border: 1px solid var(--signal); border-radius: 2px; padding: .3rem .6rem;
+  background: var(--signal-bg); color: var(--signal);
+  font-family: 'JetBrains Mono', monospace; font-size: .64rem;
+  letter-spacing: .1em; animation: ignite .5s cubic-bezier(.22,.61,.36,1) both;
+}
+@keyframes ignite {
+  from { opacity: 0; box-shadow: 0 0 0 0 var(--signal-glow-0); }
+  to   { opacity: 1; box-shadow: 0 0 22px -6px var(--signal-glow-1); }
+}
+.refuse {
+  border: 1px solid var(--alert); border-radius: 2px; padding: .6rem .75rem;
+  background: var(--alert-bg); color: var(--alert); margin-top: .5rem;
+  font-family: 'JetBrains Mono', monospace; font-size: .7rem; line-height: 1.6;
+}
+
+/* ---------- messages inside a node ---------- */
+.turn { margin-top: .8rem; }
+.bubble {
+  border: 1px solid var(--line); border-radius: 3px; padding: .7rem .9rem;
+  margin-bottom: .5rem; background: var(--surface);
+  font-family: 'IBM Plex Sans', sans-serif; font-size: .88rem; line-height: 1.65;
+  color: var(--text);
+}
+.bubble.you { background: transparent; border-style: dashed; color: var(--text-dim); }
+.bubble-k {
+  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--text-faint);
+  display: block; margin-bottom: .35rem;
+}
+.bubble p:last-child { margin-bottom: 0; }
+
+/* ---------- metrics ---------- */
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); margin: 1.8rem 0; }
+.metric { background: var(--void); padding: 1.1rem 1.15rem; }
+.metric-n {
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 300;
+  font-size: 2.4rem; line-height: 1; letter-spacing: -.03em;
+  color: var(--text); display: block; margin-bottom: .5rem;
+}
+.metric-n small { font-size: .95rem; color: var(--text-faint); margin-left: .2rem; }
+.metric.accent .metric-n { color: var(--signal); }
+.metric-k {
+  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint);
+  display: block; line-height: 1.6;
+}
+@media (max-width: 860px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
 
 /* ---------- sign-in ---------- */
-.wordmark {
-  display: flex; align-items: center; gap: .5rem;
-  font-family: 'IBM Plex Mono', monospace; font-size: .64rem;
-  letter-spacing: .2em; text-transform: uppercase; color: var(--ivory-dim);
-}
-.wordmark .glyph { color: var(--brass); font-size: .95rem; letter-spacing: 0; }
-.gate { margin: 0 0 1.4rem; }
+.gate { margin: 2.4rem 0 1rem; }
 .gate h1 {
-  font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 3.4rem;
-  line-height: 1.05; color: var(--ivory); margin: 0 0 1rem;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 300;
+  font-size: 3.1rem; line-height: 1.08; letter-spacing: -.035em;
+  color: var(--text); margin: 0 0 1.1rem;
 }
-.gate h1 em { font-style: italic; color: var(--brass); }
-.gate p { color: var(--ivory-dim); font-size: 1rem; line-height: 1.65; margin: 0; max-width: 52ch; }
+.gate h1 b { font-weight: 600; color: var(--signal); }
+.gate p { color: var(--text-dim); font-size: .95rem; line-height: 1.7; margin: 0; max-width: 54ch; }
 
-/* ---------- gateway config ---------- */
-[data-testid="stExpander"] {
-  border: 1px solid var(--ink-line) !important; border-radius: 3px !important;
-  background: #171C30 !important; margin-bottom: 1.4rem;
-}
-[data-testid="stExpander"] summary {
-  font-family: 'IBM Plex Mono', monospace !important; font-size: .62rem !important;
-  letter-spacing: .15em; text-transform: uppercase; color: var(--ivory-dim) !important;
-}
-[data-testid="stExpander"] summary:hover { color: var(--brass) !important; }
-
-[data-testid="stCode"] {
-  border: 1px solid var(--ink-line); border-radius: 3px; background: #12172A;
-  margin-bottom: 1rem;
-}
-[data-testid="stCode"] pre { background: transparent !important; }
-[data-testid="stCode"] code { font-family: 'IBM Plex Mono', monospace !important; font-size: .74rem !important; }
-
-.walk { list-style: none; margin: 0 0 .9rem; padding: 0; }
-.walk li { display: flex; gap: .65rem; margin-bottom: .5rem; font-size: .8rem; line-height: 1.55; color: #CED4E6; }
-.walk .ord {
-  flex: 0 0 auto; width: 18px; height: 18px; margin-top: .1rem; border-radius: 2px;
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; color: var(--brass);
-  border: 1px solid rgba(201,151,63,.45); background: rgba(201,151,63,.1);
-  display: flex; align-items: center; justify-content: center;
-}
-.walk code, .cfg-note code {
-  font-family: 'IBM Plex Mono', monospace; font-size: .72rem;
-  color: var(--verdigris); background: rgba(79,163,150,.1);
-  border: 1px solid rgba(79,163,150,.25); border-radius: 2px; padding: .03rem .3rem;
-}
-.walk b { color: var(--brass); }
-.cfg-note { font-size: .76rem; line-height: 1.6; color: var(--ivory-dim); margin: 0; }
-
-/* ---------- lifecycle inspector ---------- */
-.stage-meta {
-  font-family: 'IBM Plex Mono', monospace; font-size: .58rem;
-  letter-spacing: .13em; text-transform: uppercase; color: var(--ivory-dim);
-  margin-bottom: .6rem;
-}
-.anat {
-  border: 1px solid var(--ink-line); border-radius: 3px;
-  background: #12172A; padding: .75rem .85rem; margin-bottom: 1rem;
-}
-.anat-cap {
-  font-family: 'IBM Plex Mono', monospace; font-size: .57rem;
-  letter-spacing: .15em; text-transform: uppercase; color: var(--ivory-dim);
-  margin-bottom: .55rem;
-}
-.anat-row { display: flex; gap: .6rem; align-items: baseline; margin-bottom: .35rem; }
-.anat-k {
-  flex: 0 0 68px; font-family: 'IBM Plex Mono', monospace; font-size: .58rem;
-  letter-spacing: .1em; text-transform: uppercase; text-align: right;
-}
-.anat-k.h { color: var(--verdigris); }
-.anat-k.p { color: var(--ivory); }
-.anat-k.s { color: var(--brass); }
-.anat-row code {
-  font-family: 'IBM Plex Mono', monospace; font-size: .68rem; line-height: 1.5;
-  word-break: break-all; color: #CED4E6; background: none; padding: 0;
-}
-.anat-row:nth-child(2) code { color: var(--verdigris); }
-.anat-row:nth-child(4) code { color: var(--brass); }
-.anat-note {
-  font-size: .7rem; color: var(--ivory-dim); margin-top: .6rem;
-  padding-top: .55rem; border-top: 1px solid var(--ink-line); line-height: 1.55;
-}
-.anat-note code { font-size: .68rem; color: var(--ivory); background: none; }
-
-.kv { border: 1px solid var(--ink-line); border-radius: 3px; margin-bottom: 1rem; }
-.kv-row {
-  display: flex; gap: 1rem; padding: .4rem .8rem;
-  border-bottom: 1px solid var(--ink-line);
-}
-.kv-row:last-child { border-bottom: 0; }
-.kv-k {
-  flex: 0 0 210px; font-family: 'IBM Plex Mono', monospace; font-size: .62rem;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--ivory-dim);
-}
-.kv-v {
-  font-family: 'IBM Plex Mono', monospace; font-size: .72rem;
-  color: var(--ivory); word-break: break-all;
-}
-[data-testid="stTabs"] button[role="tab"] {
-  font-family: 'IBM Plex Mono', monospace !important; font-size: .64rem !important;
-  letter-spacing: .1em; text-transform: uppercase;
-}
-
-/* ---------- buttons ---------- */
-.stButton > button {
-  font-family: 'IBM Plex Mono', monospace !important;
-  font-size: .7rem !important; letter-spacing: .12em !important; text-transform: uppercase;
-  border-radius: 2px !important; border: 1px solid var(--ink-line) !important;
-  background: var(--ink-raised) !important; color: var(--ivory) !important;
-  transition: border-color .2s ease, background .2s ease;
-}
-.stButton > button:hover {
-  border-color: var(--brass) !important; background: rgba(201,151,63,.12) !important;
-  color: var(--ivory) !important;
-}
-
-/* fixed so it stays reachable while the sign-in page scrolls; right offset clears
-   Streamlit's own toolbar button in the header strip */
 .signin-wrap { position: fixed; top: .5rem; right: 3.8rem; z-index: 1000001; }
 .signin {
   display: inline-flex; align-items: center; gap: .55rem;
-  background: #1A2138; border: 1px solid var(--brass); border-radius: 2px;
-  padding: .55rem 1.05rem; text-decoration: none; color: var(--ivory) !important;
-  font-family: 'IBM Plex Mono', monospace; font-size: .68rem; font-weight: 500;
-  letter-spacing: .11em; text-transform: uppercase; white-space: nowrap;
-  transition: background .2s ease, transform .2s ease, box-shadow .2s ease;
+  background: var(--surface-2); border: 1px solid var(--line-lit); border-radius: 2px;
+  padding: .55rem 1.05rem; text-decoration: none; color: var(--text) !important;
+  font-family: 'JetBrains Mono', monospace; font-size: .66rem; font-weight: 500;
+  letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
+  transition: border-color .2s ease, background .2s ease;
 }
-.signin:hover {
-  background: rgba(201,151,63,.14); transform: translateY(-1px);
-  box-shadow: 0 4px 16px -6px rgba(201,151,63,.55);
+.signin:hover { border-color: var(--signal); background: var(--signal-bg); }
+.signin:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.signin img { width: 18px; height: 18px; display: block; }
+@media (max-width: 760px) { .signin-wrap { right: .75rem; top: 3.6rem; } }
+
+/* ---------- sidebar ---------- */
+[data-testid="stSidebar"] { background: var(--sunken); border-right: 1px solid var(--line); }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .6rem; }
+.eyebrow {
+  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--text-faint);
+  margin: 1.4rem 0 .5rem; display: flex; align-items: center; gap: .55rem;
 }
-.signin:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
-.signin img { width: 19px; height: 19px; display: block; }
-@media (max-width: 760px) {
-  .signin-wrap { right: .75rem; top: 3.6rem; }
-  .signin { font-size: .6rem; padding: .45rem .7rem; }
+.eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.ledger { border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.ledger-row { padding: .5rem .7rem; display: flex; flex-direction: column; gap: .1rem; }
+.ledger-k {
+  font-family: 'JetBrains Mono', monospace; font-size: .54rem;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--text-faint);
+}
+.ledger-v { font-family: 'JetBrains Mono', monospace; font-size: .76rem; color: var(--text); }
+.ledger-row.struck .ledger-v { color: var(--text-faint); text-decoration: line-through; }
+.ledger-row.held { background: var(--signal-bg); border-top: 1px solid var(--line); }
+.ledger-row.held .ledger-v { color: var(--signal); }
+.ledger-row.pass .ledger-v { color: var(--text); }
+.ledger-note {
+  font-family: 'IBM Plex Sans', sans-serif; font-size: .66rem; color: var(--text-faint);
+  line-height: 1.5; padding: .45rem .7rem .55rem; border-top: 1px solid var(--line);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .cred.sealing::after { animation: none !important; }
+/* ---------- streamlit widgets ---------- */
+.stButton > button {
+  font-family: 'JetBrains Mono', monospace !important; font-size: .64rem !important;
+  letter-spacing: .14em !important; text-transform: uppercase;
+  border-radius: 2px !important; border: 1px solid var(--line-lit) !important;
+  background: var(--surface) !important; color: var(--text) !important;
 }
-@media (max-width: 820px) {
-  .cred { grid-template-columns: 1fr; }
-  .gate h1 { font-size: 2.4rem; }
+.stButton > button:hover {
+  border-color: var(--signal) !important; background: var(--signal-bg) !important;
+}
+[data-testid="stExpander"] {
+  border: 1px solid var(--line) !important; border-radius: 2px !important;
+  background: var(--surface) !important; margin-bottom: 1.2rem;
+}
+[data-testid="stExpander"] summary {
+  font-family: 'JetBrains Mono', monospace !important; font-size: .6rem !important;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--text-dim) !important;
+}
+[data-testid="stExpander"] summary:hover { color: var(--signal) !important; }
+[data-testid="stCode"] {
+  border: 1px solid var(--line); border-radius: 2px; background: var(--sunken); margin-bottom: 1rem;
+}
+[data-testid="stCode"] pre { background: transparent !important; }
+[data-testid="stCode"] code {
+  font-family: 'JetBrains Mono', monospace !important; font-size: .72rem !important;
+}
+[data-testid="stTabs"] button[role="tab"] {
+  font-family: 'JetBrains Mono', monospace !important; font-size: .62rem !important;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+[data-testid="stChatInput"] textarea { font-family: 'IBM Plex Sans', sans-serif; }
+
+/* ---------- inspector helpers ---------- */
+.stage-meta {
+  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint);
+  margin-bottom: .6rem;
+}
+.anat { border: 1px solid var(--line); border-radius: 2px; background: var(--sunken);
+  padding: .7rem .8rem; margin-bottom: 1rem; }
+.anat-cap {
+  font-family: 'JetBrains Mono', monospace; font-size: .55rem;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--text-faint);
+  margin-bottom: .5rem;
+}
+.anat-row { display: flex; gap: .6rem; align-items: baseline; margin-bottom: .3rem; }
+.anat-k {
+  flex: 0 0 68px; font-family: 'JetBrains Mono', monospace; font-size: .56rem;
+  letter-spacing: .1em; text-transform: uppercase; text-align: right; color: var(--text-faint);
+}
+.anat-k.h, .anat-k.p { color: var(--text-dim); }
+.anat-k.s { color: var(--signal); }
+.anat-row code {
+  font-family: 'JetBrains Mono', monospace; font-size: .66rem; line-height: 1.5;
+  word-break: break-all; color: var(--text-dim); background: none; padding: 0;
+}
+.anat-row:nth-child(4) code { color: var(--signal); }
+.anat-note {
+  font-family: 'IBM Plex Sans', sans-serif; font-size: .7rem; color: var(--text-faint);
+  margin-top: .55rem; padding-top: .5rem; border-top: 1px solid var(--line); line-height: 1.55;
+}
+.kv { border: 1px solid var(--line); border-radius: 2px; margin-bottom: 1rem; }
+.kv-row { display: flex; gap: 1rem; padding: .38rem .75rem; border-bottom: 1px solid var(--line); }
+.kv-row:last-child { border-bottom: 0; }
+.kv-k {
+  flex: 0 0 210px; font-family: 'JetBrains Mono', monospace; font-size: .58rem;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint);
+}
+.kv-v { font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--text); word-break: break-all; }
+.walk { list-style: none; margin: 0 0 .9rem; padding: 0; }
+.walk li { display: flex; gap: .6rem; margin-bottom: .45rem; font-size: .78rem;
+  line-height: 1.55; color: var(--text-dim); }
+.walk .ord {
+  flex: 0 0 18px; height: 18px; margin-top: .1rem; border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace; font-size: .58rem; color: var(--signal);
+  border: 1px solid var(--line-lit); display: flex; align-items: center; justify-content: center;
+}
+.walk code, .cfg-note code {
+  font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 2px; padding: .03rem .3rem;
+}
+.walk b { color: var(--signal); }
+.cfg-note { font-family: 'IBM Plex Sans', sans-serif; font-size: .74rem;
+  line-height: 1.6; color: var(--text-faint); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .enforce { animation: none !important; }
 }
 </style>
 """
-st.markdown(THEME, unsafe_allow_html=True)
+st.markdown(THEME.replace("__TOKENS__", _TOKENS).replace("__MODE__", MODE),
+            unsafe_allow_html=True)
 
 
 def esc(value) -> str:
     return html.escape(str(value))
 
 
-def credential_strip(token: str, role: str, department: str, sealing: bool) -> str:
-    """Renders the live JWT as three inspectable segments."""
-    signature_b64 = token.split(".")[2]
-    mins = token_lifetime(token)
-    expiry = f"{mins} min left" if mins is not None else "unknown"
+def clock(ts) -> str:
+    try:
+        return time.strftime("%H:%M:%S", time.localtime(ts))
+    except Exception:
+        return "--:--:--"
+
+
+def md_to_html(text: str) -> str:
+    """Assistant replies arrive as markdown; raw HTML blocks don't get markdown-processed,
+    so convert here rather than handing the text back to Streamlit."""
+    return markdown.markdown(
+        text or "", extensions=["fenced_code", "tables", "nl2br"], output_format="html"
+    )
+
+
+def trace_node(title: str, when: str, body: str, state: str = "", extra: str = "") -> str:
+    cls = f"node {state}".strip()
     return f"""
-<div class="cred{' sealing' if sealing else ''}">
-  <div class="cred-seg seg-h" title="Names the key that signed this token, so the gateway knows which public key to verify with.">
-    <div class="cred-tag"><b>Header</b><span>RS256</span></div>
-    <div class="cred-val">kid {esc(KID[:8])}…{esc(KID[-4:])}</div>
-  </div>
-  <div class="cred-seg seg-p" title="The claims the gateway routes on. Readable by anyone, changeable by no one.">
-    <div class="cred-tag"><b>Payload</b><span>{esc(expiry)}</span></div>
-    <div class="cred-val">{esc(role.lower())} · {esc(department.lower())} · {esc(PORTKEY_DEFAULT_CONFIG_ID)}</div>
-  </div>
-  <div class="cred-seg seg-s" title="Proof the claims came from this app and were not edited in transit.">
-    <div class="cred-tag"><b>Signature</b><span>sealed</span></div>
-    <div class="cred-val">{esc(signature_b64[:22])}…</div>
-  </div>
+<div class="{cls}">
+  <div class="node-head"><span class="t">{esc(title)}</span>
+    <span class="when">{esc(when)}</span><span class="rule"></span></div>
+  <div class="node-body">{body}</div>
+  {extra}
+</div>"""
+
+
+def render_trace(user: dict) -> str:
+    """The session as a vertical trace. Every node is a real event with a real timestamp."""
+    stages = st.session_state.get("lifecycle", {})
+    calls = st.session_state.get("lifecycle_calls", [])
+    nodes = []
+
+    claims = stages.get("claims")
+    nodes.append(trace_node(
+        "Identity verified", clock(claims["at"] if claims else time.time()),
+        f"<b>{esc(user['name'])}</b> · {esc(user['email'])}<br>"
+        f"role <b>{esc(user['role'].lower())}</b> · department <b>{esc(user['department'].lower())}</b>",
+        state="open",
+    ))
+
+    mint = stages.get("mint")
+    mins = token_lifetime(user["portkey_jwt"])
+    expiry = f"{mins} min remaining" if mins is not None else "lifetime unknown"
+    nodes.append(trace_node(
+        "Credential minted", clock(mint["at"] if mint else time.time()),
+        f"rs256 · kid <b>{esc(short(KID, 8, 4))}</b> · "
+        f"<span role=\"status\" aria-atomic=\"true\" "
+        f"aria-label=\"Credential expires in {esc(str(mins))} minutes\">{esc(expiry)}</span><br>"
+        f"claims sealed: email, user_role, department, config_id",
+        state="open",
+    ))
+
+    policy_model, why = resolve_policy(user["email"], user["role"])
+    if policy_model is None:
+        verdict = ("this address is <b>exempt</b> from routing — the model you pick is sent through"
+                   if why == "exempt" else "your role is not pinned to a single model")
+    else:
+        verdict = f"pinned to <b>{esc(MODEL_LABELS.get(policy_model, policy_model))}</b>"
+    nodes.append(trace_node(
+        "Policy resolved", clock(mint["at"] if mint else time.time()),
+        f"config <b>{esc(PORTKEY_DEFAULT_CONFIG_ID)}</b><br>{verdict}",
+        state="open",
+    ))
+
+    for i, c in enumerate(calls, start=1):
+        requested = MODEL_LABELS.get(
+            c["model_sent"].split("/", 1)[-1], c["model_sent"].split("/", 1)[-1])
+        served_id = c.get("served_model")
+        served = MODEL_LABELS.get(served_id, served_id)
+        overridden = bool(served_id) and served != requested
+        failed = c.get("outcome") == "rejected"
+
+        if failed:
+            line = f"requested <b>{esc(requested)}</b> · refused by the gateway"
+            extra = f'<div class="refuse">{esc(c.get("error", "unknown error"))}</div>'
+            state = "bad"
+        elif overridden:
+            line = (f'requested <span class="strike">{esc(requested)}</span> · '
+                    f'served <span class="sig">{esc(served)}</span>')
+            extra = (f'<div class="enforce" role="status" aria-atomic="true">'
+                     f'Policy replaced your choice with {esc(served)}</div>')
+            state = "lit"
+        else:
+            line = f"requested <b>{esc(requested)}</b> · served <b>{esc(served or requested)}</b>"
+            extra = ""
+            state = ""
+
+        took = c.get("elapsed_ms")
+        if took:
+            line += f" · {took} ms"
+
+        turn = (f'<div class="turn">'
+                f'<div class="bubble you"><span class="bubble-k">You</span>'
+                f'{esc(c.get("prompt", ""))}</div>')
+        if c.get("reply"):
+            turn += (f'<div class="bubble"><span class="bubble-k">Assistant</span>'
+                     f'{md_to_html(c["reply"])}</div>')
+        turn += "</div>"
+
+        nodes.append(trace_node(
+            f"Request {i:02d}", clock(c.get("at", time.time())),
+            line, state=state, extra=extra + turn,
+        ))
+
+    if not calls:
+        nodes.append(trace_node(
+            "Awaiting first request", "",
+            "Pick a model your role does not allow, then watch which one answers.",
+        ))
+
+    return f'<div class="trace">{"".join(nodes)}</div>'
+
+
+def topbar(user: dict) -> str:
+    tag = "administrator" if user["role"] == "Admin" else "standard user"
+    return f"""
+<div class="topbar">
+  <div class="brand"><i></i>Enterprise AI Access</div>
+  <div class="whoami"><b>{esc(user['name'])}</b>
+    <span class="tag">{esc(tag)}</span>
+    <span class="tag">{esc(user['department'])}</span></div>
 </div>"""
 
 
@@ -649,11 +753,6 @@ def policy_ledger(requested_label: str, enforced_label, why: str = "role") -> st
 </div>"""
 
 
-def served_stamp(model_id: str) -> str:
-    label = MODEL_LABELS.get(model_id, model_id)
-    return f'<div class="stamp"><span class="dot"></span>Served by {esc(label)}</div>'
-
-
 def config_walkthrough() -> str:
     """Explains each branch in the order the gateway evaluates it."""
     rows = []
@@ -683,6 +782,32 @@ def config_walkthrough() -> str:
         'which is why the address exemption sits above the role rules. The claims being matched '
         'here arrive inside the signed token, so a browser cannot alter them.</p>'
     )
+
+
+def metrics_band() -> str:
+    """Key indicators for the operations-landing pattern. Every number is derived from
+    live configuration, so it cannot drift away from what the app actually enforces."""
+    rules = len(CONDITIONS) + 1  # conditions plus the default branch
+    ttl = 60
+    return f"""
+<div class="metrics">
+  <div class="metric accent">
+    <span class="metric-n">0</span>
+    <span class="metric-k">API keys issued<br>to end users</span>
+  </div>
+  <div class="metric">
+    <span class="metric-n">{len(AVAILABLE_MODELS)}</span>
+    <span class="metric-k">models reachable<br>behind one policy</span>
+  </div>
+  <div class="metric">
+    <span class="metric-n">{rules}</span>
+    <span class="metric-k">routing rules<br>enforced at the edge</span>
+  </div>
+  <div class="metric">
+    <span class="metric-n">{ttl}<small>min</small></span>
+    <span class="metric-k">credential lifetime<br>rs256 signed</span>
+  </div>
+</div>"""
 
 
 def render_config_panel(expanded: bool = False) -> None:
@@ -915,66 +1040,66 @@ FLOW_DIAGRAM = """
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap');
 * { box-sizing: border-box; }
 body {
-  margin: 0; background: #151A2D; color: #F3EEE5;
-  font-family: 'Instrument Sans', system-ui, sans-serif;
+  margin: 0; background: __VOID__; color: __TEXT__;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
 .bar {
   display: flex; align-items: center; gap: .45rem; margin-bottom: .7rem; flex-wrap: wrap;
 }
 .bar .lab {
-  font-family: 'IBM Plex Mono', monospace; font-size: .56rem; letter-spacing: .18em;
-  text-transform: uppercase; color: #98A1BE; margin-right: .3rem;
+  font-family: 'JetBrains Mono', monospace; font-size: .56rem; letter-spacing: .18em;
+  text-transform: uppercase; color: __DIM__; margin-right: .3rem;
 }
 .tab {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .1em;
-  text-transform: uppercase; background: #1D2440; color: #98A1BE;
-  border: 1px solid #2C3557; border-radius: 2px; padding: .3rem .6rem; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: .6rem; letter-spacing: .1em;
+  text-transform: uppercase; background: __SURFACE2__; color: __DIM__;
+  border: 1px solid __LINE__; border-radius: 2px; padding: .3rem .6rem; cursor: pointer;
   transition: all .2s ease;
 }
-.tab:hover { color: #F3EEE5; border-color: rgba(201,151,63,.6); }
-.tab.on { color: #C9973F; border-color: #C9973F; background: rgba(201,151,63,.12); }
-.tab:focus-visible { outline: 2px solid #C9973F; outline-offset: 2px; }
+.tab:hover { color: __TEXT__; border-color: rgba(255,176,32,.6); }
+.tab.on { color: __SIGNAL__; border-color: __SIGNAL__; background: __SIGNALBG__; }
+.tab:focus-visible { outline: 2px solid __SIGNAL__; outline-offset: 2px; }
 .spacer { flex: 1; }
 svg { width: 100%; height: auto; display: block; }
 
-.card { fill: #1D2440; stroke: #2C3557; transition: stroke .35s ease, fill .35s ease; }
-.card.lit { stroke: #4FA396; fill: rgba(79,163,150,.14); }
-.card.hot { stroke: #C9973F; fill: rgba(201,151,63,.16); }
-.zone { fill: none; stroke: #C9973F; stroke-dasharray: 5 4; opacity: .55; }
-.panel { fill: #1A2038; stroke: #2C3557; }
-.wire { fill: none; stroke: #2C3557; stroke-width: 1.1; transition: stroke .3s ease, opacity .3s ease; }
-.wire.live { stroke: #4FA396; opacity: 1; }
-.wire.route { stroke: #C9973F; }
-.chip { fill: #191F35; stroke: #2C3557; transition: all .3s ease; }
-.chip.on { fill: rgba(201,151,63,.14); stroke: rgba(201,151,63,.75); }
+.card { fill: __SURFACE2__; stroke: __LINE__; transition: stroke .35s ease, fill .35s ease; }
+.card.lit { stroke: __FAINT__; fill: rgba(92,101,119,.14); }
+.card.hot { stroke: __SIGNAL__; fill: rgba(255,176,32,.16); }
+.zone { fill: none; stroke: __SIGNAL__; stroke-dasharray: 5 4; opacity: .55; }
+.panel { fill: __SURFACE__; stroke: __LINE__; }
+.wire { fill: none; stroke: __LINE__; stroke-width: 1.1; transition: stroke .3s ease, opacity .3s ease; }
+.wire.live { stroke: __FAINT__; opacity: 1; }
+.wire.route { stroke: __SIGNAL__; }
+.chip { fill: __SURFACE2__; stroke: __LINE__; transition: all .3s ease; }
+.chip.on { fill: rgba(255,176,32,.14); stroke: rgba(255,176,32,.75); }
 
-text { font-family: 'Instrument Sans', sans-serif; fill: #F3EEE5; }
+text { font-family: 'IBM Plex Sans', sans-serif; fill: __TEXT__; }
 .eye {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 1.7px;
-  fill: #98A1BE; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.7px;
+  fill: __DIM__; text-transform: uppercase;
 }
 .nm { font-size: 14.5px; font-weight: 600; }
-.sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: #98A1BE; }
-.chip-t { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: #98A1BE; transition: fill .3s ease; }
-.chip.on + .chip-t, .chip-t.on { fill: #C9973F; }
-.row-t { font-size: 13px; fill: #CED4E6; transition: fill .3s ease, font-weight .3s ease; }
-.row-t.win { fill: #C9973F; font-weight: 600; }
-.dot { fill: #C9973F; filter: drop-shadow(0 0 5px rgba(201,151,63,.9)); }
-.dot.id { fill: #4FA396; filter: drop-shadow(0 0 5px rgba(79,163,150,.9)); }
+.sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: __DIM__; }
+.chip-t { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: __DIM__; transition: fill .3s ease; }
+.chip.on + .chip-t, .chip-t.on { fill: __SIGNAL__; }
+.row-t { font-size: 13px; fill: __DIM__; transition: fill .3s ease, font-weight .3s ease; }
+.row-t.win { fill: __SIGNAL__; font-weight: 600; }
+.dot { fill: __SIGNAL__; filter: drop-shadow(0 0 5px rgba(255,176,32,.9)); }
+.dot.id { fill: __FAINT__; filter: drop-shadow(0 0 5px rgba(92,101,119,.9)); }
 
 .story {
-  margin-top: .6rem; border: 1px solid #2C3557; border-radius: 3px;
-  background: linear-gradient(180deg,#1A2038,#161B2E); padding: .6rem .8rem;
+  margin-top: .6rem; border: 1px solid __LINE__; border-radius: 3px;
+  background: linear-gradient(180deg,__SURFACE__,__SUNKEN__); padding: .6rem .8rem;
   min-height: 52px; display: flex; align-items: center; gap: .7rem;
 }
 .story .badge {
-  font-family: 'IBM Plex Mono', monospace; font-size: .58rem; letter-spacing: .1em;
+  font-family: 'JetBrains Mono', monospace; font-size: .58rem; letter-spacing: .1em;
   text-transform: uppercase; padding: .2rem .5rem; border-radius: 2px;
-  border: 1px solid rgba(201,151,63,.5); color: #C9973F;
-  background: rgba(201,151,63,.1); white-space: nowrap;
+  border: 1px solid rgba(255,176,32,.5); color: __SIGNAL__;
+  background: rgba(255,176,32,.1); white-space: nowrap;
 }
-.story p { margin: 0; font-size: .78rem; line-height: 1.5; color: #CED4E6; }
-.story b { color: #F3EEE5; }
+.story p { margin: 0; font-size: .78rem; line-height: 1.5; color: __DIM__; }
+.story b { color: __TEXT__; }
 </style></head><body>
 
 <div class="bar">
@@ -1138,6 +1263,16 @@ $("toggle").addEventListener("click", () => {
   else stop();
 });
 
+// Stop animating while the tab or this panel is hidden, then resume where it left off.
+let pausedByVisibility = false;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (timer !== null) { pausedByVisibility = true; stop(); }
+  } else if (pausedByVisibility) {
+    pausedByVisibility = false; timer = 1; $("toggle").textContent = "Pause"; loop();
+  }
+});
+
 if (REDUCED) { const t = ++run; play(0, t); $("toggle").textContent = "Play"; }
 else { timer = 1; loop(); }
 </script></body></html>
@@ -1145,8 +1280,17 @@ else { timer = 1; loop(); }
 
 
 def render_flow_diagram(height: int = 560) -> None:
+    # The iframe is its own document and cannot read the app's CSS variables, so the
+    # active palette is substituted in at render time.
+    p = PALETTES[MODE]
     html_doc = (
         FLOW_DIAGRAM
+        .replace("__VOID__", p["void"]).replace("__SUNKEN__", p["sunken"])
+        .replace("__SURFACE__", p["surface"]).replace("__SURFACE2__", p["surface-2"])
+        .replace("__LINE__", p["line"]).replace("__LINELIT__", p["line-lit"])
+        .replace("__TEXT__", p["text"]).replace("__DIM__", p["text-dim"])
+        .replace("__FAINT__", p["text-faint"])
+        .replace("__SIGNAL__", p["signal"]).replace("__SIGNALBG__", p["signal-bg"])
         .replace("__TENANT__", esc(short(AZURE_TENANT_ID, 6, 4)))
         .replace("__KID__", esc(short(KID, 6, 4)))
         .replace("__ORG__", esc(short(PORTKEY_ORG_ID, 6, 4)))
@@ -1362,7 +1506,8 @@ if not st.session_state.user:
 
     st.markdown(signin_button(auth_url), unsafe_allow_html=True)
     st.markdown(
-        '<div class="wordmark"><span class="glyph">⌁</span>Enterprise AI Access</div>',
+        '<div class="topbar"><div class="brand"><i></i>Enterprise AI Access</div>'
+        '<div class="whoami"><span class="tag">not signed in</span></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -1373,7 +1518,7 @@ if not st.session_state.user:
         st.markdown(
             """
 <div class="gate">
-  <h1>Your identity<br>becomes the <em>key</em>.</h1>
+  <h1>Nobody here<br>holds an <b>API key</b>.</h1>
   <p>Sign in with your organization account. Your role and department are read from
      the directory, sealed into a short-lived signed token, and sent to the AI gateway
      with every prompt. No API keys are issued to you.</p>
@@ -1383,6 +1528,8 @@ if not st.session_state.user:
         render_config_panel(expanded=False)
     with diagram_col:
         render_flow_diagram(height=430)
+
+    st.markdown(metrics_band(), unsafe_allow_html=True)
     st.stop()
 
 # ==========================================
@@ -1395,22 +1542,6 @@ policy_label = MODEL_LABELS.get(policy_model, policy_model)
 # ---------- Sidebar : identity, policy, controls ----------
 with st.sidebar:
     st.markdown('<div class="eyebrow">Signed in as</div>', unsafe_allow_html=True)
-    seal_class = "seal-admin" if user["role"] == "Admin" else "seal-user"
-    seal_text = "Administrator" if user["role"] == "Admin" else "Standard user"
-    st.markdown(
-        f"""
-<div class="plate">
-  <div class="plate-name">{esc(user['name'])}</div>
-  <div class="plate-mail">{esc(user['email'])}</div>
-  <div class="plate-rule"></div>
-  <div class="plate-claims">
-    <div class="claim"><span class="claim-k">Department</span><span class="claim-v">{esc(user['department'])}</span></div>
-    <div class="claim"><span class="claim-k">Role</span><span class="seal {seal_class}">{esc(seal_text)}</span></div>
-  </div>
-</div>""",
-        unsafe_allow_html=True,
-    )
-
     st.markdown('<div class="eyebrow">Model</div>', unsafe_allow_html=True)
     selected_label = st.selectbox(
         "Requested model",
@@ -1449,49 +1580,19 @@ with st.sidebar:
         clear_lifecycle()
         st.rerun()
 
-# ---------- Masthead + live credential ----------
-st.markdown(
-    f"""
-<div class="mast"><span class="glyph">⌁</span><h1>Enterprise AI Access</h1></div>
-<div class="mast-sub">{esc(PORTKEY_BASE_URL)} &nbsp;·&nbsp; workspace {esc(PORTKEY_WORKSPACE_SLUG)}
-&nbsp;·&nbsp; <span>credential verified</span></div>""",
-    unsafe_allow_html=True,
-)
-sealing = not st.session_state.get("seal_shown")
-st.session_state.seal_shown = True
-st.markdown(
-    credential_strip(user["portkey_jwt"], user["role"], user["department"], sealing),
-    unsafe_allow_html=True,
-)
+# ---------- Top bar ----------
+st.markdown(topbar(user), unsafe_allow_html=True)
+
+# ---------- The session as a trace ----------
+st.markdown(render_trace(user), unsafe_allow_html=True)
+
 render_config_panel(expanded=False)
 render_lifecycle_inspector()
-
-# ---------- Conversation ----------
-if not st.session_state.messages:
-    st.markdown(
-        """
-<div class="empty">
-  <b>Ask anything to see the policy act</b>
-  Pick a model your role does not allow, then watch which one actually answers.
-</div>""",
-        unsafe_allow_html=True,
-    )
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message.get("served_model"):
-            st.markdown(served_stamp(message["served_model"]), unsafe_allow_html=True)
-
-if st.session_state.get("last_error"):
-    st.error(f"The gateway refused this request. {st.session_state.last_error}")
 
 # User Prompt Input
 if prompt := st.chat_input("Send a message"):
     st.session_state.last_error = None
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
 
     # Initialize Portkey Client using JWT
     portkey_client = Portkey(
@@ -1500,9 +1601,8 @@ if prompt := st.chat_input("Send a message"):
         provider=PORTKEY_PROVIDER
     )
 
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        call = {"prompt": prompt, "model_sent": selected_model}
+    if True:
+        call = {"prompt": prompt, "model_sent": selected_model, "at": time.time()}
         try:
             # Construct API payload:
             # 1. Add System Prompt at position 0 (if provided)
@@ -1550,6 +1650,7 @@ if prompt := st.chat_input("Send a message"):
             call.update({
                 "outcome": "accepted",
                 "served_model": served_model,
+                "reply": reply,
                 "model_was_overridden": served_model not in (None, selected_model)
                 and not selected_model.endswith(str(served_model)),
                 "response_id": getattr(response, "id", None),
@@ -1558,15 +1659,10 @@ if prompt := st.chat_input("Send a message"):
                 "system_fingerprint": getattr(response, "system_fingerprint", None),
             })
             st.session_state.setdefault("lifecycle_calls", []).append(call)
-
-            message_placeholder.markdown(reply)
-            if served_model:
-                st.markdown(served_stamp(served_model), unsafe_allow_html=True)
             st.session_state.messages.append(
                 {"role": "assistant", "content": reply, "served_model": served_model}
             )
-            # The inspector is drawn above the chat, so it rendered before this call was
-            # recorded. Rerun once so it picks the request up.
+            # The trace renders above the input, so rerun to fold this turn into it.
             st.rerun()
         except Exception as e:
             call.update({"outcome": "rejected", "error": f"{type(e).__name__}: {e}"})
