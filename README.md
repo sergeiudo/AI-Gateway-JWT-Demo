@@ -6,6 +6,8 @@ Users sign in with Microsoft Entra ID. The backend reads their app role and depa
 
 Pick a model your role isn't allowed to use, and a different one answers. That's the demo.
 
+![The sign-in page: a pre-flight card reading the live configuration, the four stages of a request, and a headline reading "Real prompts, real models — routed by policy, not by trust"](assets/screenshot-portal.png)
+
 ---
 
 ## How it works
@@ -14,9 +16,9 @@ Two JWTs are involved, and telling them apart is the key to understanding the de
 
 The **first** is issued by Microsoft and proves who you are. The **second** is issued by this app and tells the gateway what you're allowed to do. The backend is a *token broker*: it consumes a token it trusts and mints a different one the gateway trusts.
 
-![Identity flows from Microsoft Entra and Graph into a token broker, which signs an RS256 credential that the AI gateway verifies against a registered JWKS before routing to a Bedrock model](assets/architecture.svg)
+![Identity flows from Microsoft Entra and Graph into a token broker, which signs an RS256 credential that the AI gateway verifies against a registered JWKS before routing to a Bedrock model](assets/screenshot-flow.png)
 
-*The sign-in page renders this live, animating a request end to end for a standard user, an administrator and an exempt account.*
+*This runs live on the sign-in page, animating a request end to end for a standard user, an administrator and an exempt account.*
 
 In detail:
 
@@ -269,10 +271,15 @@ Open `http://localhost:8501`.
 
 ### What you'll see
 
-- **Sign-in page** — a live diagram animating three routing scenarios end to end, plus the gateway policy in full
-- **Credential strip** — your actual JWT split into header, payload and signature, with the claims that drive routing and the time left on the token
-- **Policy ledger** — your requested model struck through above the one the gateway will enforce, or a calm confirmation when they agree
-- **Served-by stamp** — under each reply, the model that actually answered, read from the gateway's response
+**Before signing in** — a pre-flight card listing every moving part read from your configuration, a live diagram that animates three routing scenarios end to end, and the routing policy in full.
+
+**After signing in** — the sidebar breaks your session into labelled values: who the directory says you are, the algorithm and key id behind your credential and how long it has left, and which rule matched you. The policy verdict is tinted green when your choice passes through and coral when it is overridden, and the credential turns coral under 15 minutes.
+
+Each request becomes a card in the conversation showing the model you asked for, the model that answered, and the round trip. When policy overrides your choice, the requested model is struck through and a coral banner names the replacement — the only place colour appears in an otherwise neutral interface.
+
+**Token lifecycle** — a panel holding the real artifacts from your session, step by step: the authorize URL, the callback code, both Microsoft tokens split into header, payload and signature, the Graph call, the JWT this app minted beside the JWKS entry that verifies it, and the request and response headers for every call. Real captured values, not examples. The client secret is never recorded.
+
+Light and dark themes are both supported; switch under the toolbar menu, then Settings.
 
 The sharpest test: as a Standard User, pick a model your role isn't allowed, send a message, and watch a different one answer.
 
@@ -321,7 +328,12 @@ For production, keep the signing key in a KMS or HSM — Azure Key Vault can hol
 ├── app.py                  # Streamlit UI, MSAL auth, JWT minting, gateway client
 ├── generate_keys.py        # RSA-2048 keypair + JWKS generator
 ├── .env.example            # Environment template
-├── .streamlit/config.toml  # Base theme
-├── assets/                 # Static image assets
+├── .streamlit/config.toml  # Light and dark theme definitions
+├── assets/                 # Architecture diagram and the Entra mark
 └── requirements.txt
 ```
+
+`app.py` keeps one copy of the gateway's routing JSON in `GATEWAY_CONFIG` and derives the
+rest of its behaviour from it — the sidebar verdict, the plain-language walkthrough, and
+the policy simulation all read from that single structure. Keep it in step with the
+gateway; the gateway enforces, this copy only explains.
