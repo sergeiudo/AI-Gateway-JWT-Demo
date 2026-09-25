@@ -275,24 +275,35 @@ def stage(key: str):
 # TRACE — near-monochrome. Exactly two chromatic colours exist in either mode, and both
 # mean "the gateway acted on your request": signal for enforcement, alert for refusal.
 # Every text value below is measured at >=4.5:1 against the surface it sits on.
+# Matches the Prisma AIRS demo portal: light paper, white cards, generous radii, soft
+# shadows. Brand coral measures 3.2:1 on white, so it is reserved for display type and
+# graphics; small accent text uses the deeper --signal-text.
 PALETTES = {
-    "dark": {
-        "void": "#0A0C10", "sunken": "#0D1016", "surface": "#121620", "surface-2": "#171C27",
-        "line": "#232A38", "line-lit": "#39435A",
-        "text": "#EDEFF3", "text-dim": "#8A94A6", "text-faint": "#757E92",
-        "signal": "#FFB020", "on-signal": "#0A0C10",
-        "signal-bg": "rgba(255,176,32,.10)",
-        "signal-glow-0": "rgba(255,176,32,.45)", "signal-glow-1": "rgba(255,176,32,.55)",
-        "alert": "#FF5C5C", "alert-bg": "rgba(255,92,92,.10)",
-    },
     "light": {
-        "void": "#F7F7F5", "sunken": "#F0F0EC", "surface": "#FFFFFF", "surface-2": "#FAFAF8",
-        "line": "#E3E3DE", "line-lit": "#BFBFB8",
-        "text": "#17181C", "text-dim": "#4A4F5A", "text-faint": "#6B7280",
-        "signal": "#A85D00", "on-signal": "#FFFFFF",
-        "signal-bg": "rgba(168,93,0,.09)",
-        "signal-glow-0": "rgba(168,93,0,.30)", "signal-glow-1": "rgba(168,93,0,.28)",
-        "alert": "#C62828", "alert-bg": "rgba(198,40,40,.08)",
+        "void": "#FAFAF9", "sunken": "#F4F4F2", "surface": "#FFFFFF", "surface-2": "#F4F4F2",
+        "line": "#E7E7E4", "line-lit": "#D6D6D1",
+        "text": "#0F1115", "text-dim": "#3F444E", "text-faint": "#666C78",
+        "signal": "#FA582D", "signal-text": "#C2410C", "on-signal": "#FFFFFF",
+        "signal-bg": "rgba(250,88,45,.08)",
+        "signal-glow-0": "rgba(250,88,45,.30)", "signal-glow-1": "rgba(250,88,45,.22)",
+        "ok": "#16A34A", "ok-text": "#15803D", "ok-bg": "rgba(22,163,74,.10)",
+        "alert": "#C62828", "alert-bg": "rgba(198,40,40,.07)",
+        "ink": "#0F1115", "on-ink": "#FFFFFF",
+        "shadow-sm": "0 1px 2px rgba(15,17,21,.04), 0 1px 3px rgba(15,17,21,.06)",
+        "shadow-md": "0 6px 24px -8px rgba(15,17,21,.12)",
+    },
+    "dark": {
+        "void": "#0F1115", "sunken": "#14171C", "surface": "#181B21", "surface-2": "#1F232B",
+        "line": "#282D36", "line-lit": "#3A4049",
+        "text": "#F5F6F7", "text-dim": "#A8AEB8", "text-faint": "#868D99",
+        "signal": "#FF7A52", "signal-text": "#FF9270", "on-signal": "#0F1115",
+        "signal-bg": "rgba(255,122,82,.12)",
+        "signal-glow-0": "rgba(255,122,82,.45)", "signal-glow-1": "rgba(255,122,82,.40)",
+        "ok": "#34D399", "ok-text": "#4ADE80", "ok-bg": "rgba(52,211,153,.12)",
+        "alert": "#FF6B6B", "alert-bg": "rgba(255,107,107,.10)",
+        "ink": "#F5F6F7", "on-ink": "#0F1115",
+        "shadow-sm": "0 1px 2px rgba(0,0,0,.3)",
+        "shadow-md": "0 6px 24px -8px rgba(0,0,0,.5)",
     },
 }
 
@@ -301,9 +312,9 @@ def theme_mode() -> str:
     """Follow whichever theme Streamlit is actually rendering, so the custom CSS and the
     built-in widgets can never disagree."""
     try:
-        return "light" if st.context.theme.type == "light" else "dark"
+        return "dark" if st.context.theme.type == "dark" else "light"
     except Exception:
-        return "dark"
+        return "light"
 
 
 MODE = theme_mode()
@@ -311,278 +322,378 @@ _TOKENS = "".join(f"  --{k}: {v};\n" for k, v in PALETTES[MODE].items())
 
 THEME = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-__TOKENS__  --sp: 8px;
+__TOKENS__  --r-card: 14px;
+  --r-sm: 9px;
+  --r-pill: 999px;
   color-scheme: __MODE__;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
   background: var(--void);
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 [data-testid="stHeader"] { background: transparent; }
-[data-testid="stMainBlockContainer"] { padding-top: 1.6rem; max-width: 1040px; }
-::selection { background: var(--signal); color: var(--on-signal); }
+[data-testid="stMainBlockContainer"] { padding-top: 1.4rem; max-width: 1140px; }
+::selection { background: var(--signal); color: #fff; }
 
 /* ---------- top bar ---------- */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: .8rem; margin-bottom: 1.6rem;
+  gap: 1rem; padding: .7rem 1rem; margin-bottom: 1.8rem;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-pill); box-shadow: var(--shadow-sm);
+}
+.brand { display: flex; align-items: center; gap: .6rem; font-weight: 600; font-size: .9rem; color: var(--text); }
+.brand i { width: 9px; height: 9px; border-radius: 50%; background: var(--signal); font-style: normal; }
+.brand span { font-weight: 400; font-size: .74rem; color: var(--text-faint); }
+.whoami { display: flex; align-items: center; gap: .55rem; }
+.whoami > span:first-child {
+  font-family: 'JetBrains Mono', monospace; font-size: .68rem; color: var(--text-faint);
+}
+.tag {
+  font-size: .68rem; font-weight: 500; letter-spacing: .01em;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: .2rem .6rem; color: var(--text-dim); background: var(--surface-2);
+  white-space: nowrap;
+}
+.tag.on { background: var(--ok-bg); border-color: transparent; color: var(--ok-text); }
+.tag.hot { background: var(--signal-bg); border-color: transparent; color: var(--signal-text); }
+
+/* ---------- hero ---------- */
+.pill-eyebrow {
+  display: inline-flex; align-items: center; gap: .45rem;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: .3rem .75rem; background: var(--surface);
+  font-size: .68rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 1.2rem; box-shadow: var(--shadow-sm);
+}
+.pill-eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); font-style: normal; }
+.hero { margin-top: 2.4rem; }  /* clears the fixed sign-in button */
+.hero h1 {
+  font-size: 2.9rem; font-weight: 800; line-height: 1.1; letter-spacing: -.035em;
+  color: var(--text); margin: 0 0 1rem;
+}
+.hero h1 em { font-style: normal; color: var(--signal); }
+.hero p { font-size: .95rem; line-height: 1.65; color: var(--text-dim); margin: 0 0 1.5rem; max-width: 56ch; }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: .5rem; text-decoration: none;
+  border-radius: var(--r-pill); padding: .65rem 1.2rem;
+  font-family: 'Inter', sans-serif; font-size: .84rem; font-weight: 600;
+  border: 1px solid transparent; transition: transform .15s ease, box-shadow .15s ease;
+}
+.btn-primary { background: var(--ink); color: var(--on-ink) !important; }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn-ghost {
+  background: var(--surface); border-color: var(--line); color: var(--text) !important;
+  box-shadow: var(--shadow-sm);
+}
+.btn-ghost:hover { border-color: var(--line-lit); }
+.btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.btn img { width: 17px; height: 17px; display: block; }
+.btn-row { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.8rem; }
+
+/* ---------- status card (pre-flight) ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--shadow-sm);
+  padding: 1.1rem 1.2rem; margin-bottom: 1.2rem;
+}
+.card-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  margin-bottom: .2rem;
+}
+.card-title { font-size: .92rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: .45rem; }
+.card-when { font-family: 'JetBrains Mono', monospace; font-size: .66rem; color: var(--text-faint); }
+.card-sub { font-size: .74rem; color: var(--text-faint); margin-bottom: .9rem; }
+.card-note {
+  font-size: .72rem; color: var(--text-faint); line-height: 1.6;
+  margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line);
+}
+.card-note code {
+  font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--text-dim);
+  background: var(--surface-2); border-radius: 4px; padding: .05rem .3rem;
+}
+.srow {
+  display: flex; align-items: center; gap: .6rem; padding: .4rem 0;
   border-bottom: 1px solid var(--line);
 }
-.brand {
-  display: flex; align-items: center; gap: .55rem;
-  font-family: 'JetBrains Mono', monospace; font-size: .66rem;
-  letter-spacing: .22em; text-transform: uppercase; color: var(--text-dim);
+.srow:last-of-type { border-bottom: 0; }
+.srow i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; font-style: normal; }
+.srow i.warn { background: var(--signal); }
+.srow .k { font-size: .82rem; font-weight: 500; color: var(--text); flex: 1; }
+.srow .v {
+  font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--text-faint);
+  text-align: right; word-break: break-all;
 }
-.brand i {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--signal);
-  font-style: normal; display: inline-block;
-}
-.whoami {
-  display: flex; align-items: center; gap: .8rem;
-  font-family: 'JetBrains Mono', monospace; font-size: .64rem;
-  letter-spacing: .08em; color: var(--text-faint);
-}
-.whoami b { color: var(--text); font-weight: 500; }
-.whoami .tag {
-  border: 1px solid var(--line-lit); border-radius: 2px;
-  padding: .12rem .45rem; text-transform: uppercase; letter-spacing: .12em;
-  font-size: .58rem; color: var(--text-dim);
-}
-
-/* ---------- the spine ---------- */
-.trace { position: relative; padding-left: 2rem; }
-.trace::before {
-  content: ""; position: absolute; left: 5px; top: 6px; bottom: 0;
-  width: 1px; background: var(--line);
-}
-.node { position: relative; padding-bottom: 1.5rem; }
-.node::before {
-  content: ""; position: absolute; left: -2rem; top: 4px;
-  width: 11px; height: 11px; border-radius: 50%;
-  background: var(--void); border: 1px solid var(--line-lit);
-  box-sizing: border-box;
-}
-.node.lit::before { border-color: var(--signal); background: var(--signal); }
-.node.bad::before { border-color: var(--alert); background: var(--alert); }
-.node.open::before { background: var(--text-faint); border-color: var(--text-faint); }
-
-.node-head {
-  display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap;
-  font-family: 'JetBrains Mono', monospace; font-size: .62rem;
-  letter-spacing: .15em; text-transform: uppercase; color: var(--text-dim);
-  margin-bottom: .4rem;
-}
-.node-head .t { color: var(--text); }
-.node.lit .node-head .t { color: var(--signal); }
-.node.bad .node-head .t { color: var(--alert); }
-.node-head .when { color: var(--text-faint); letter-spacing: .1em; }
-.node-head .rule { flex: 1; height: 1px; background: var(--line); }
-
-.node-body {
-  font-family: 'JetBrains Mono', monospace; font-size: .74rem;
-  line-height: 1.7; color: var(--text-dim);
-}
-.node-body b { color: var(--text); font-weight: 500; }
-.node-body .sig { color: var(--signal); }
-.node-body .strike { text-decoration: line-through; color: var(--text-faint); }
-
-/* the one moment of colour: policy overrode the request */
-.enforce {
-  display: inline-flex; align-items: center; gap: .5rem; margin-top: .5rem;
-  border: 1px solid var(--signal); border-radius: 2px; padding: .3rem .6rem;
-  background: var(--signal-bg); color: var(--signal);
-  font-family: 'JetBrains Mono', monospace; font-size: .64rem;
-  letter-spacing: .1em; animation: ignite .5s cubic-bezier(.22,.61,.36,1) both;
-}
-@keyframes ignite {
-  from { opacity: 0; box-shadow: 0 0 0 0 var(--signal-glow-0); }
-  to   { opacity: 1; box-shadow: 0 0 22px -6px var(--signal-glow-1); }
-}
-.refuse {
-  border: 1px solid var(--alert); border-radius: 2px; padding: .6rem .75rem;
-  background: var(--alert-bg); color: var(--alert); margin-top: .5rem;
-  font-family: 'JetBrains Mono', monospace; font-size: .7rem; line-height: 1.6;
-}
-
-/* ---------- messages inside a node ---------- */
-.turn { margin-top: .8rem; }
-.bubble {
-  border: 1px solid var(--line); border-radius: 3px; padding: .7rem .9rem;
-  margin-bottom: .5rem; background: var(--surface);
-  font-family: 'IBM Plex Sans', sans-serif; font-size: .88rem; line-height: 1.65;
-  color: var(--text);
-}
-.bubble.you { background: transparent; border-style: dashed; color: var(--text-dim); }
-.bubble-k {
-  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
-  letter-spacing: .16em; text-transform: uppercase; color: var(--text-faint);
-  display: block; margin-bottom: .35rem;
-}
-.bubble p:last-child { margin-bottom: 0; }
 
 /* ---------- metrics ---------- */
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--line); border: 1px solid var(--line); margin: 1.8rem 0; }
-.metric { background: var(--void); padding: 1.1rem 1.15rem; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6rem; margin: 0 0 1.8rem; }
 .metric-n {
-  font-family: 'IBM Plex Sans', sans-serif; font-weight: 300;
-  font-size: 2.4rem; line-height: 1; letter-spacing: -.03em;
-  color: var(--text); display: block; margin-bottom: .5rem;
+  font-size: 2.1rem; font-weight: 700; letter-spacing: -.035em; line-height: 1;
+  color: var(--text); display: block; margin-bottom: .3rem;
 }
-.metric-n small { font-size: .95rem; color: var(--text-faint); margin-left: .2rem; }
+.metric-n small { font-size: .9rem; font-weight: 500; color: var(--text-faint); margin-left: .15rem; }
 .metric.accent .metric-n { color: var(--signal); }
-.metric-k {
-  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
-  letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint);
-  display: block; line-height: 1.6;
-}
+.metric-k { font-size: .72rem; color: var(--text-faint); display: block; line-height: 1.45; }
 @media (max-width: 860px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
 
-/* ---------- sign-in ---------- */
-.gate { margin: 2.4rem 0 1rem; }
-.gate h1 {
-  font-family: 'IBM Plex Sans', sans-serif; font-weight: 300;
-  font-size: 3.1rem; line-height: 1.08; letter-spacing: -.035em;
-  color: var(--text); margin: 0 0 1.1rem;
+/* ---------- built by ---------- */
+.builtby-wrap { display: flex; justify-content: center; margin-top: -.3rem; }
+.builtby {
+  display: inline-flex; align-items: center; gap: .8rem;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-pill); padding: .6rem 1.1rem .6rem .6rem;
+  box-shadow: var(--shadow-sm);
 }
-.gate h1 b { font-weight: 600; color: var(--signal); }
-.gate p { color: var(--text-dim); font-size: .95rem; line-height: 1.7; margin: 0; max-width: 54ch; }
+.avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--signal); color: #fff; display: flex; align-items: center;
+  justify-content: center; font-weight: 700; font-size: .8rem; letter-spacing: .02em;
+}
+.builtby-k { font-size: .6rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); }
+.builtby-n { font-size: .86rem; font-weight: 600; color: var(--text); line-height: 1.3; }
+.builtby-r { font-size: .72rem; color: var(--text-faint); }
 
-.signin-wrap { position: fixed; top: .5rem; right: 3.8rem; z-index: 1000001; }
-.signin {
-  display: inline-flex; align-items: center; gap: .55rem;
-  background: var(--surface-2); border: 1px solid var(--line-lit); border-radius: 2px;
-  padding: .55rem 1.05rem; text-decoration: none; color: var(--text) !important;
-  font-family: 'JetBrains Mono', monospace; font-size: .66rem; font-weight: 500;
-  letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
-  transition: border-color .2s ease, background .2s ease;
+/* ---------- numbered tiles ---------- */
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; margin-bottom: 1.6rem; }
+.tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: 1rem 1.05rem; box-shadow: var(--shadow-sm);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
-.signin:hover { border-color: var(--signal); background: var(--signal-bg); }
-.signin:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
-.signin img { width: 18px; height: 18px; display: block; }
-@media (max-width: 760px) { .signin-wrap { right: .75rem; top: 3.6rem; } }
+.tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--line-lit); }
+.tile-n {
+  font-family: 'JetBrains Mono', monospace; font-size: .64rem; font-weight: 600;
+  color: var(--signal-text); background: var(--signal-bg); border-radius: 5px;
+  padding: .12rem .4rem; display: inline-block; margin-bottom: .6rem;
+}
+.tile-t { font-size: .88rem; font-weight: 600; color: var(--text); margin-bottom: .3rem; line-height: 1.3; }
+.tile-d { font-size: .74rem; color: var(--text-faint); line-height: 1.55; }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+.section-h { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; margin: 0 0 .2rem; color: var(--text); }
+.section-s { font-size: .8rem; color: var(--text-faint); margin: 0 0 1rem; }
+
+/* ---------- request flow ---------- */
+.flow { display: flex; flex-direction: column; gap: .9rem; }
+.req {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.req.lit { border-color: var(--signal); box-shadow: 0 0 0 3px var(--signal-bg), var(--shadow-sm); }
+.req.bad { border-color: var(--alert); }
+.req-head {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  padding: .7rem 1rem; border-bottom: 1px solid var(--line); background: var(--surface-2);
+}
+.req-n {
+  font-family: 'JetBrains Mono', monospace; font-size: .64rem; font-weight: 600;
+  color: var(--text-faint); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 5px; padding: .12rem .42rem;
+}
+.req-models { font-size: .78rem; color: var(--text-dim); flex: 1; }
+.req-models b { color: var(--text); font-weight: 600; }
+.req-models .strike { text-decoration: line-through; color: var(--text-faint); }
+.req-models .sig { color: var(--signal-text); font-weight: 600; }
+.req-when { font-family: 'JetBrains Mono', monospace; font-size: .64rem; color: var(--text-faint); }
+.req-body { padding: .9rem 1rem 1rem; }
+.enforce {
+  display: inline-flex; align-items: center; gap: .45rem; margin-bottom: .8rem;
+  background: var(--signal-bg); color: var(--signal-text); border-radius: var(--r-pill);
+  padding: .3rem .7rem; font-size: .74rem; font-weight: 600;
+  animation: ignite .45s cubic-bezier(.22,.61,.36,1) both;
+}
+.enforce i { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); font-style: normal; }
+@keyframes ignite {
+  from { opacity: 0; box-shadow: 0 0 0 0 var(--signal-glow-0); }
+  to   { opacity: 1; box-shadow: 0 0 18px -4px var(--signal-glow-1); }
+}
+.refuse {
+  background: var(--alert-bg); color: var(--alert); border-radius: var(--r-sm);
+  padding: .65rem .8rem; font-family: 'JetBrains Mono', monospace;
+  font-size: .72rem; line-height: 1.6;
+}
+.turn-k {
+  font-size: .62rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-faint); display: block; margin-bottom: .3rem;
+}
+.ask { font-size: .86rem; color: var(--text-dim); margin-bottom: .9rem; line-height: 1.6; }
+.say { font-size: .9rem; color: var(--text); line-height: 1.7; }
+.say p:last-child { margin-bottom: 0; }
+.say code {
+  font-family: 'JetBrains Mono', monospace; font-size: .8rem;
+  background: var(--surface-2); border-radius: 4px; padding: .08rem .32rem;
+}
+.empty {
+  border: 1px dashed var(--line-lit); border-radius: var(--r-card);
+  padding: 2.4rem 1.5rem; text-align: center; color: var(--text-faint); font-size: .82rem;
+}
+.empty b { display: block; color: var(--text); font-size: .95rem; font-weight: 600; margin-bottom: .3rem; }
 
 /* ---------- sidebar ---------- */
 [data-testid="stSidebar"] { background: var(--sunken); border-right: 1px solid var(--line); }
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .6rem; }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .55rem; }
 .eyebrow {
-  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
-  letter-spacing: .2em; text-transform: uppercase; color: var(--text-faint);
-  margin: 1.4rem 0 .5rem; display: flex; align-items: center; gap: .55rem;
+  font-size: .62rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-faint); margin: 1.3rem 0 .5rem;
 }
-.eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+/* labelled data rows: every value gets its own line and its own key, so a value can be
+   pointed at during a demo instead of being read out of a paragraph */
+.dl {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-sm); overflow: hidden; box-shadow: var(--shadow-sm);
+}
+.dl-row {
+  display: flex; flex-direction: column; gap: .12rem;
+  padding: .45rem .65rem; border-bottom: 1px solid var(--line);
+}
+.dl-row:last-child { border-bottom: 0; }
+.dl-k {
+  font-size: .56rem; font-weight: 600; letter-spacing: .11em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.dl-v { font-size: .82rem; font-weight: 500; color: var(--text); word-break: break-all; line-height: 1.35; }
+.dl-v.big { font-size: .92rem; font-weight: 600; }
+.dl-v.mono { font-family: 'JetBrains Mono', monospace; font-size: .74rem; font-weight: 400; }
+.dl-v.ok { color: var(--ok-text); }
+.dl-v.sig { color: var(--signal-text); }
+.dl-v.dim { color: var(--text-dim); font-weight: 400; font-size: .76rem; }
+.dl-row.hi { background: var(--signal-bg); }
+.dl-row.good { background: var(--ok-bg); }
 
-.ledger { border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.ledger { border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--surface); }
 .ledger-row { padding: .5rem .7rem; display: flex; flex-direction: column; gap: .1rem; }
-.ledger-k {
-  font-family: 'JetBrains Mono', monospace; font-size: .54rem;
-  letter-spacing: .15em; text-transform: uppercase; color: var(--text-faint);
-}
-.ledger-v { font-family: 'JetBrains Mono', monospace; font-size: .76rem; color: var(--text); }
+.ledger-k { font-size: .6rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+.ledger-v { font-size: .8rem; font-weight: 500; color: var(--text); }
 .ledger-row.struck .ledger-v { color: var(--text-faint); text-decoration: line-through; }
 .ledger-row.held { background: var(--signal-bg); border-top: 1px solid var(--line); }
-.ledger-row.held .ledger-v { color: var(--signal); }
-.ledger-row.pass .ledger-v { color: var(--text); }
-.ledger-note {
-  font-family: 'IBM Plex Sans', sans-serif; font-size: .66rem; color: var(--text-faint);
-  line-height: 1.5; padding: .45rem .7rem .55rem; border-top: 1px solid var(--line);
-}
+.ledger-row.held .ledger-v { color: var(--signal-text); }
+.ledger-row.pass { background: var(--ok-bg); }
+.ledger-row.pass .ledger-v { color: var(--ok-text); }
+.ledger-note { font-size: .68rem; color: var(--text-faint); line-height: 1.5; padding: .45rem .7rem .55rem; border-top: 1px solid var(--line); }
 
 /* ---------- streamlit widgets ---------- */
 .stButton > button {
-  font-family: 'JetBrains Mono', monospace !important; font-size: .64rem !important;
-  letter-spacing: .14em !important; text-transform: uppercase;
-  border-radius: 2px !important; border: 1px solid var(--line-lit) !important;
+  font-family: 'Inter', sans-serif !important; font-size: .78rem !important; font-weight: 600 !important;
+  border-radius: var(--r-pill) !important; border: 1px solid var(--line) !important;
   background: var(--surface) !important; color: var(--text) !important;
 }
-.stButton > button:hover {
-  border-color: var(--signal) !important; background: var(--signal-bg) !important;
+.stButton > button:hover { border-color: var(--signal) !important; color: var(--signal-text) !important; }
+/* our own disclosure: a plain <details>, so opening it never round-trips to Streamlit */
+.disc {
+  border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface);
+  box-shadow: var(--shadow-sm); margin-bottom: 1.2rem; overflow: hidden;
 }
+.disc > summary {
+  cursor: pointer; list-style: none; padding: .85rem 1.1rem;
+  font-size: .86rem; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: .55rem;
+}
+.disc > summary::-webkit-details-marker { display: none; }
+.disc > summary::before {
+  content: "›"; display: inline-block; font-size: 1rem; color: var(--text-faint);
+  transition: transform .18s ease;
+}
+.disc[open] > summary::before { transform: rotate(90deg); }
+.disc > summary:hover { color: var(--signal-text); }
+.disc > summary:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.disc-body { padding: 0 1.1rem 1.1rem; }
+.cb {
+  white-space: pre; overflow-x: auto; margin: 0 0 1rem;
+  background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: .8rem .9rem; font-family: 'JetBrains Mono', monospace;
+  font-size: .72rem; line-height: 1.6; color: var(--text-dim);
+}
+.cb code { font-family: inherit; font-size: inherit; background: none; padding: 0; color: inherit; }
+
 [data-testid="stExpander"] {
-  border: 1px solid var(--line) !important; border-radius: 2px !important;
-  background: var(--surface) !important; margin-bottom: 1.2rem;
+  border: 1px solid var(--line) !important; border-radius: var(--r-card) !important;
+  background: var(--surface) !important; box-shadow: var(--shadow-sm); margin-bottom: 1.2rem;
 }
 [data-testid="stExpander"] summary {
-  font-family: 'JetBrains Mono', monospace !important; font-size: .6rem !important;
-  letter-spacing: .16em; text-transform: uppercase; color: var(--text-dim) !important;
+  font-family: 'Inter', sans-serif !important; font-size: .8rem !important;
+  font-weight: 600 !important; color: var(--text) !important;
 }
-[data-testid="stExpander"] summary:hover { color: var(--signal) !important; }
+[data-testid="stExpander"] summary:hover { color: var(--signal-text) !important; }
 [data-testid="stCode"] {
-  border: 1px solid var(--line); border-radius: 2px; background: var(--sunken); margin-bottom: 1rem;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken); margin-bottom: 1rem;
 }
 [data-testid="stCode"] pre { background: transparent !important; }
-[data-testid="stCode"] code {
-  font-family: 'JetBrains Mono', monospace !important; font-size: .72rem !important;
+[data-testid="stCode"] code { font-family: 'JetBrains Mono', monospace !important; font-size: .72rem !important; }
+/* the lifecycle step picker, styled as a pill row rather than default radios */
+[data-testid="stExpander"] [role="radiogroup"] { gap: .35rem !important; flex-wrap: wrap; }
+[data-testid="stExpander"] [role="radiogroup"] label {
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: .22rem .7rem; background: var(--surface-2); cursor: pointer;
 }
-[data-testid="stTabs"] button[role="tab"] {
-  font-family: 'JetBrains Mono', monospace !important; font-size: .62rem !important;
-  letter-spacing: .12em; text-transform: uppercase;
+[data-testid="stExpander"] [role="radiogroup"] label:hover { border-color: var(--line-lit); }
+[data-testid="stExpander"] [role="radiogroup"] label > div:first-child { display: none; }
+[data-testid="stExpander"] [role="radiogroup"] label p {
+  font-size: .72rem !important; font-weight: 500; margin: 0 !important; color: var(--text-dim);
 }
-[data-testid="stChatInput"] textarea { font-family: 'IBM Plex Sans', sans-serif; }
+[data-testid="stExpander"] [role="radiogroup"] label:has(input:checked) {
+  background: var(--signal-bg); border-color: var(--signal);
+}
+[data-testid="stExpander"] [role="radiogroup"] label:has(input:checked) p { color: var(--signal-text); }
+[data-testid="stForm"] { border: 0 !important; padding: 0 !important; }
+[data-testid="stForm"] input {
+  font-family: 'Inter', sans-serif !important; font-size: .9rem !important;
+  border-radius: var(--r-pill) !important; padding: .65rem 1.1rem !important;
+}
+[data-testid="stForm"] button {
+  border-radius: var(--r-pill) !important; background: var(--ink) !important;
+  color: var(--on-ink) !important; border: 1px solid transparent !important;
+  font-weight: 600 !important;
+}
+[data-testid="stForm"] button:hover { box-shadow: var(--shadow-md); }
 
-/* ---------- inspector helpers ---------- */
-.stage-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: .56rem;
-  letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint);
-  margin-bottom: .6rem;
-}
-.anat { border: 1px solid var(--line); border-radius: 2px; background: var(--sunken);
-  padding: .7rem .8rem; margin-bottom: 1rem; }
-.anat-cap {
-  font-family: 'JetBrains Mono', monospace; font-size: .55rem;
-  letter-spacing: .16em; text-transform: uppercase; color: var(--text-faint);
-  margin-bottom: .5rem;
-}
+/* ---------- sign-in button ---------- */
+.signin-wrap { position: fixed; top: .5rem; right: 3.8rem; z-index: 1000001; }
+@media (max-width: 760px) { .signin-wrap { right: .75rem; top: 3.6rem; } }
+
+/* ---------- inspector ---------- */
+.stage-meta { font-size: .68rem; color: var(--text-faint); margin-bottom: .6rem; }
+.anat { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken); padding: .7rem .8rem; margin-bottom: 1rem; }
+.anat-cap { font-size: .62rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); margin-bottom: .5rem; }
 .anat-row { display: flex; gap: .6rem; align-items: baseline; margin-bottom: .3rem; }
-.anat-k {
-  flex: 0 0 68px; font-family: 'JetBrains Mono', monospace; font-size: .56rem;
-  letter-spacing: .1em; text-transform: uppercase; text-align: right; color: var(--text-faint);
-}
+.anat-k { flex: 0 0 68px; font-size: .62rem; font-weight: 600; text-transform: uppercase; text-align: right; color: var(--text-faint); }
 .anat-k.h, .anat-k.p { color: var(--text-dim); }
-.anat-k.s { color: var(--signal); }
-.anat-row code {
-  font-family: 'JetBrains Mono', monospace; font-size: .66rem; line-height: 1.5;
-  word-break: break-all; color: var(--text-dim); background: none; padding: 0;
-}
-.anat-row:nth-child(4) code { color: var(--signal); }
-.anat-note {
-  font-family: 'IBM Plex Sans', sans-serif; font-size: .7rem; color: var(--text-faint);
-  margin-top: .55rem; padding-top: .5rem; border-top: 1px solid var(--line); line-height: 1.55;
-}
-.kv { border: 1px solid var(--line); border-radius: 2px; margin-bottom: 1rem; }
-.kv-row { display: flex; gap: 1rem; padding: .38rem .75rem; border-bottom: 1px solid var(--line); }
+.anat-k.s { color: var(--signal-text); }
+.anat-row code { font-family: 'JetBrains Mono', monospace; font-size: .66rem; line-height: 1.5; word-break: break-all; color: var(--text-dim); background: none; padding: 0; }
+.anat-row:nth-child(4) code { color: var(--signal-text); }
+.anat-note { font-size: .72rem; color: var(--text-faint); margin-top: .55rem; padding-top: .5rem; border-top: 1px solid var(--line); line-height: 1.55; }
+.kv { border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 1rem; overflow: hidden; }
+.kv-row { display: flex; gap: 1rem; padding: .4rem .75rem; border-bottom: 1px solid var(--line); }
 .kv-row:last-child { border-bottom: 0; }
-.kv-k {
-  flex: 0 0 210px; font-family: 'JetBrains Mono', monospace; font-size: .58rem;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint);
-}
+.kv-k { flex: 0 0 210px; font-size: .68rem; font-weight: 500; color: var(--text-faint); }
 .kv-v { font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--text); word-break: break-all; }
 .walk { list-style: none; margin: 0 0 .9rem; padding: 0; }
-.walk li { display: flex; gap: .6rem; margin-bottom: .45rem; font-size: .78rem;
-  line-height: 1.55; color: var(--text-dim); }
+.walk li { display: flex; gap: .6rem; margin-bottom: .45rem; font-size: .8rem; line-height: 1.55; color: var(--text-dim); }
 .walk .ord {
-  flex: 0 0 18px; height: 18px; margin-top: .1rem; border-radius: 2px;
-  font-family: 'JetBrains Mono', monospace; font-size: .58rem; color: var(--signal);
-  border: 1px solid var(--line-lit); display: flex; align-items: center; justify-content: center;
+  flex: 0 0 20px; height: 20px; border-radius: 5px; font-family: 'JetBrains Mono', monospace;
+  font-size: .6rem; font-weight: 600; color: var(--signal-text); background: var(--signal-bg);
+  display: flex; align-items: center; justify-content: center;
 }
 .walk code, .cfg-note code {
-  font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--text);
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: 2px; padding: .03rem .3rem;
+  font-family: 'JetBrains Mono', monospace; font-size: .72rem; color: var(--text);
+  background: var(--surface-2); border-radius: 4px; padding: .05rem .3rem;
 }
-.walk b { color: var(--signal); }
-.cfg-note { font-family: 'IBM Plex Sans', sans-serif; font-size: .74rem;
-  line-height: 1.6; color: var(--text-faint); margin: 0; }
+.walk b { color: var(--signal-text); }
+.cfg-note { font-size: .78rem; line-height: 1.6; color: var(--text-faint); margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .enforce { animation: none !important; }
+  .enforce, .tile, .btn { animation: none !important; transition: none !important; }
 }
 </style>
 """
+st.markdown(THEME.replace("__TOKENS__", _TOKENS).replace("__MODE__", MODE),
+            unsafe_allow_html=True)
 st.markdown(THEME.replace("__TOKENS__", _TOKENS).replace("__MODE__", MODE),
             unsafe_allow_html=True)
 
@@ -606,55 +717,131 @@ def md_to_html(text: str) -> str:
     )
 
 
-def trace_node(title: str, when: str, body: str, state: str = "", extra: str = "") -> str:
-    cls = f"node {state}".strip()
+def preflight_card(user: dict = None) -> str:
+    """The reference portal's pre-flight panel: one row per moving part, green when the
+    real value is present rather than assumed."""
+    mins = token_lifetime(user["portkey_jwt"]) if user else None
+    rules = len(CONDITIONS) + 1
+    rows = [
+        ("AIRS AI Gateway", esc(PORTKEY_BASE_URL.replace("https://", ""))),
+        ("Provider integration", esc(PORTKEY_PROVIDER)),
+        ("Routing config", esc(PORTKEY_DEFAULT_CONFIG_ID)),
+        ("Signing key", f"rs256 &middot; kid {esc(short(KID, 6, 4))}"),
+        ("Models reachable", f"{len(AVAILABLE_MODELS)} behind {rules} rules"),
+        ("Credential", f"{mins} min remaining" if mins is not None else "minted per sign-in"),
+    ]
+    body = "".join(
+        f'<div class="srow"><i></i><span class="k">{k}</span><span class="v">{v}</span></div>'
+        for k, v in rows
+    )
     return f"""
-<div class="{cls}">
-  <div class="node-head"><span class="t">{esc(title)}</span>
-    <span class="when">{esc(when)}</span><span class="rule"></span></div>
-  <div class="node-body">{body}</div>
-  {extra}
+<div class="card">
+  <div class="card-head">
+    <span class="card-title">Pre-flight</span>
+    <span class="card-when">checked {clock(time.time())}</span>
+  </div>
+  <div class="card-sub">Read from this app's configuration &mdash; set, not probed.</div>
+  {body}
+  <div class="card-note">The gateway is the enforcement point. This panel only shows what
+  the app will send; the routing decision is made server side against the
+  <code>{esc(PORTKEY_DEFAULT_CONFIG_ID)}</code> config.</div>
 </div>"""
 
 
-def render_trace(user: dict) -> str:
-    """The session as a vertical trace. Every node is a real event with a real timestamp."""
-    stages = st.session_state.get("lifecycle", {})
-    calls = st.session_state.get("lifecycle_calls", [])
-    nodes = []
+LIFECYCLE_TILES = [
+    ("01", "Identity", "Microsoft Entra ID authenticates the user and returns the app role."),
+    ("02", "Attributes", "Department is read from Microsoft Graph; it is not a token claim."),
+    ("03", "Credential", "A short-lived RS256 token is minted with the claims sealed inside."),
+    ("04", "Enforcement", "The gateway verifies the signature, then routes on what it read."),
+]
 
-    claims = stages.get("claims")
-    nodes.append(trace_node(
-        "Identity verified", clock(claims["at"] if claims else time.time()),
-        f"<b>{esc(user['name'])}</b> · {esc(user['email'])}<br>"
-        f"role <b>{esc(user['role'].lower())}</b> · department <b>{esc(user['department'].lower())}</b>",
-        state="open",
-    ))
 
-    mint = stages.get("mint")
+def tiles_section() -> str:
+    tiles = "".join(
+        f'<div class="tile"><span class="tile-n">{n}</span>'
+        f'<div class="tile-t">{esc(t)}</div><div class="tile-d">{esc(d)}</div></div>'
+        for n, t, d in LIFECYCLE_TILES
+    )
+    return ('<div class="section-h">A request, in running order</div>'
+            '<div class="section-s">Every step runs for real on each prompt you send.</div>'
+            f'<div class="tiles">{tiles}</div>')
+
+
+def built_by() -> str:
+    return """
+<div class="builtby">
+  <div class="avatar">SU</div>
+  <div>
+    <div class="builtby-k">Built by</div>
+    <div class="builtby-n">Sergei (SUDO) Udovenko</div>
+    <div class="builtby-r">Systems Engineer &middot; Palo Alto Networks</div>
+  </div>
+</div>"""
+
+
+def dl(rows) -> str:
+    """rows: (label, value, css classes on the value, css classes on the row)."""
+    out = []
+    for label, value, vcls, rcls in rows:
+        out.append(
+            f'<div class="dl-row {rcls}"><span class="dl-k">{esc(label)}</span>'
+            f'<span class="dl-v {vcls}">{value}</span></div>'
+        )
+    return f'<div class="dl">{"".join(out)}</div>'
+
+
+def sidebar_facts(user: dict) -> str:
+    """Session preamble as labelled rows, so each value is individually readable."""
     mins = token_lifetime(user["portkey_jwt"])
-    expiry = f"{mins} min remaining" if mins is not None else "lifetime unknown"
-    nodes.append(trace_node(
-        "Credential minted", clock(mint["at"] if mint else time.time()),
-        f"rs256 · kid <b>{esc(short(KID, 8, 4))}</b> · "
-        f"<span role=\"status\" aria-atomic=\"true\" "
-        f"aria-label=\"Credential expires in {esc(str(mins))} minutes\">{esc(expiry)}</span><br>"
-        f"claims sealed: email, user_role, department, config_id",
-        state="open",
-    ))
+    if mins is None:
+        expiry, expiry_cls = "unknown", "dim"
+    else:
+        expiry, expiry_cls = f"{mins} min", "sig" if mins <= 15 else "ok"
 
     policy_model, why = resolve_policy(user["email"], user["role"])
     if policy_model is None:
-        verdict = ("this address is <b>exempt</b> from routing — the model you pick is sent through"
-                   if why == "exempt" else "your role is not pinned to a single model")
+        effect = ("Exempt — your choice is sent through" if why == "exempt"
+                  else "Not pinned to a single model")
+        effect_cls, row_cls = "ok", "good"
     else:
-        verdict = f"pinned to <b>{esc(MODEL_LABELS.get(policy_model, policy_model))}</b>"
-    nodes.append(trace_node(
-        "Policy resolved", clock(mint["at"] if mint else time.time()),
-        f"config <b>{esc(PORTKEY_DEFAULT_CONFIG_ID)}</b><br>{verdict}",
-        state="open",
-    ))
+        effect = f"Pinned to {esc(MODEL_LABELS.get(policy_model, policy_model))}"
+        effect_cls, row_cls = "sig", "hi"
 
+    role = "Administrator" if user["role"] == "Admin" else "Standard user"
+
+    identity = dl([
+        ("Name", esc(user["name"]), "big", ""),
+        ("Email", esc(user["email"]), "mono", ""),
+        ("App role", esc(role), "", ""),
+        ("Department", esc(user["department"]), "", ""),
+    ])
+    credential = dl([
+        ("Algorithm", "RS256", "mono", ""),
+        ("Key id", esc(short(KID, 8, 4)), "mono", ""),
+        ("Expires in",
+         f'<span role="status" aria-atomic="true" '
+         f'aria-label="Credential expires in {esc(str(mins))} minutes">{esc(expiry)}</span>',
+         expiry_cls, ""),
+        ("Sealed claims", "email · user_role · department · config_id", "dim", ""),
+    ])
+    policy = dl([
+        ("Config", esc(PORTKEY_DEFAULT_CONFIG_ID), "mono", ""),
+        ("Matched on", "email address" if why == "exempt" else "app role", "dim", ""),
+        ("Effect", effect, effect_cls, row_cls),
+    ])
+    return (f'<div class="eyebrow">Identity</div>{identity}'
+            f'<div class="eyebrow">Credential</div>{credential}'
+            f'<div class="eyebrow">Policy</div>{policy}')
+
+
+def render_trace(user: dict) -> str:
+    """The request flow: one card per call, coral only when policy acted."""
+    calls = st.session_state.get("lifecycle_calls", [])
+    if not calls:
+        return ('<div class="empty"><b>No requests yet</b>'
+                'Pick a model your role does not allow, then watch which one answers.</div>')
+
+    cards = []
     for i, c in enumerate(calls, start=1):
         requested = MODEL_LABELS.get(
             c["model_sent"].split("/", 1)[-1], c["model_sent"].split("/", 1)[-1])
@@ -664,54 +851,50 @@ def render_trace(user: dict) -> str:
         failed = c.get("outcome") == "rejected"
 
         if failed:
-            line = f"requested <b>{esc(requested)}</b> · refused by the gateway"
-            extra = f'<div class="refuse">{esc(c.get("error", "unknown error"))}</div>'
+            models = f'requested <b>{esc(requested)}</b> &middot; refused'
+            banner = f'<div class="refuse">{esc(c.get("error", "unknown error"))}</div>'
             state = "bad"
         elif overridden:
-            line = (f'requested <span class="strike">{esc(requested)}</span> · '
-                    f'served <span class="sig">{esc(served)}</span>')
-            extra = (f'<div class="enforce" role="status" aria-atomic="true">'
-                     f'Policy replaced your choice with {esc(served)}</div>')
+            models = (f'<span class="strike">{esc(requested)}</span> '
+                      f'&rarr; <span class="sig">{esc(served)}</span>')
+            banner = (f'<div class="enforce" role="status" aria-atomic="true"><i></i>'
+                      f'Policy replaced your choice with {esc(served)}</div>')
             state = "lit"
         else:
-            line = f"requested <b>{esc(requested)}</b> · served <b>{esc(served or requested)}</b>"
-            extra = ""
+            models = f'<b>{esc(served or requested)}</b>'
+            banner = ""
             state = ""
 
-        took = c.get("elapsed_ms")
-        if took:
-            line += f" · {took} ms"
-
-        turn = (f'<div class="turn">'
-                f'<div class="bubble you"><span class="bubble-k">You</span>'
-                f'{esc(c.get("prompt", ""))}</div>')
+        took = f' &middot; {c["elapsed_ms"]} ms' if c.get("elapsed_ms") else ""
+        body = banner
+        body += (f'<span class="turn-k">Prompt</span>'
+                 f'<div class="ask">{esc(c.get("prompt", ""))}</div>')
         if c.get("reply"):
-            turn += (f'<div class="bubble"><span class="bubble-k">Assistant</span>'
-                     f'{md_to_html(c["reply"])}</div>')
-        turn += "</div>"
+            body += (f'<span class="turn-k">Response</span>'
+                     f'<div class="say">{md_to_html(c["reply"])}</div>')
 
-        nodes.append(trace_node(
-            f"Request {i:02d}", clock(c.get("at", time.time())),
-            line, state=state, extra=extra + turn,
-        ))
-
-    if not calls:
-        nodes.append(trace_node(
-            "Awaiting first request", "",
-            "Pick a model your role does not allow, then watch which one answers.",
-        ))
-
-    return f'<div class="trace">{"".join(nodes)}</div>'
+        cards.append(f"""
+<div class="req {state}">
+  <div class="req-head">
+    <span class="req-n">{i:02d}</span>
+    <span class="req-models">{models}{took}</span>
+    <span class="req-when">{clock(c.get("at", time.time()))}</span>
+  </div>
+  <div class="req-body">{body}</div>
+</div>""")
+    return f'<div class="flow">{"".join(cards)}</div>'
 
 
 def topbar(user: dict) -> str:
     tag = "administrator" if user["role"] == "Admin" else "standard user"
     return f"""
 <div class="topbar">
-  <div class="brand"><i></i>Enterprise AI Access</div>
-  <div class="whoami"><b>{esc(user['name'])}</b>
+  <div class="brand"><i></i>Enterprise AI Access<span>&middot; JWT gateway demo</span></div>
+  <div class="whoami">
+    <span>{esc(PORTKEY_BASE_URL.replace("https://", ""))}</span>
+    <span class="tag on">credential verified</span>
     <span class="tag">{esc(tag)}</span>
-    <span class="tag">{esc(user['department'])}</span></div>
+  </div>
 </div>"""
 
 
@@ -785,41 +968,50 @@ def config_walkthrough() -> str:
 
 
 def metrics_band() -> str:
-    """Key indicators for the operations-landing pattern. Every number is derived from
-    live configuration, so it cannot drift away from what the app actually enforces."""
+    """Key indicators. Every number is derived from live configuration, so it cannot drift
+    away from what the app actually enforces."""
     rules = len(CONDITIONS) + 1  # conditions plus the default branch
-    ttl = 60
     return f"""
 <div class="metrics">
   <div class="metric accent">
-    <span class="metric-n">0</span>
-    <span class="metric-k">API keys issued<br>to end users</span>
+    <span class="metric-n">0</span><span class="metric-k">API keys issued</span>
   </div>
   <div class="metric">
-    <span class="metric-n">{len(AVAILABLE_MODELS)}</span>
-    <span class="metric-k">models reachable<br>behind one policy</span>
+    <span class="metric-n">{len(AVAILABLE_MODELS)}</span><span class="metric-k">models reachable</span>
   </div>
   <div class="metric">
-    <span class="metric-n">{rules}</span>
-    <span class="metric-k">routing rules<br>enforced at the edge</span>
+    <span class="metric-n">{rules}</span><span class="metric-k">routing rules</span>
   </div>
   <div class="metric">
-    <span class="metric-n">{ttl}<small>min</small></span>
-    <span class="metric-k">credential lifetime<br>rs256 signed</span>
+    <span class="metric-n">60<small>min</small></span><span class="metric-k">credential life</span>
   </div>
 </div>"""
 
 
+def code_block(text: str, lang: str = "") -> str:
+    """A code block we own, so it can live inside our own markup."""
+    return (f'<pre class="cb" data-lang="{esc(lang)}"><code>{esc(text)}</code></pre>')
+
+
+def disclosure(summary: str, body: str, open_: bool = False) -> str:
+    """Native <details>: the browser handles the toggle, so Streamlit never reruns and
+    nothing gets scrolled into view."""
+    return (f'<details class="disc"{" open" if open_ else ""}>'
+            f'<summary>{esc(summary)}</summary>'
+            f'<div class="disc-body">{body}</div></details>')
+
+
 def render_config_panel(expanded: bool = False) -> None:
-    with st.expander("The routing policy the gateway enforces", expanded=expanded):
-        st.markdown(config_walkthrough(), unsafe_allow_html=True)
-        st.code(json.dumps(GATEWAY_CONFIG, indent=2), language="json")
-        st.markdown(
-            f'<p class="cfg-note">Stored in the gateway as <code>{esc(PORTKEY_DEFAULT_CONFIG_ID)}</code>. '
-            f'Every request carries this id inside its signed token, so the policy travels with the '
-            f'caller instead of being chosen by them.</p>',
-            unsafe_allow_html=True,
-        )
+    body = (
+        config_walkthrough()
+        + code_block(json.dumps(GATEWAY_CONFIG, indent=2), "json")
+        + f'<p class="cfg-note">Stored in the gateway as '
+          f'<code>{esc(PORTKEY_DEFAULT_CONFIG_ID)}</code>. Every request carries this id '
+          f'inside its signed token, so the policy travels with the caller instead of '
+          f'being chosen by them.</p>'
+    )
+    st.markdown(disclosure("The routing policy the gateway enforces", body, expanded),
+                unsafe_allow_html=True)
 
 
 def jwt_anatomy(parts: dict, caption: str) -> str:
@@ -864,12 +1056,14 @@ def render_lifecycle_inspector() -> None:
             'back-channel POST and never becomes part of an artifact.</p>',
             unsafe_allow_html=True,
         )
-        tabs = st.tabs([
-            "1 · Authorize", "2 · Callback", "3 · Exchange",
-            "4 · Claims", "5 · Graph", "6 · Minting", "7 · Gateway",
-        ])
+        # Deliberately not st.tabs: it calls scrollIntoView on the selected tab whenever
+        # it is laid out, which drags the page down to this panel. A radio does not.
+        STEPS = ["1 · Authorize", "2 · Callback", "3 · Exchange",
+                 "4 · Claims", "5 · Graph", "6 · Minting", "7 · Gateway"]
+        sel = STEPS.index(st.radio("Lifecycle step", STEPS, horizontal=True,
+                                   label_visibility="collapsed"))
 
-        with tabs[0]:
+        if sel == 0:
             entry = stage("authorize")
             if entry:
                 d = entry["data"]
@@ -883,7 +1077,7 @@ def render_lifecycle_inspector() -> None:
                     st.markdown("**Query parameters Microsoft received**")
                     st.code(json.dumps(d["params"], indent=2), language="json")
 
-        with tabs[1]:
+        if sel == 1:
             entry = stage("callback")
             if entry:
                 d = entry["data"]
@@ -897,7 +1091,7 @@ def render_lifecycle_inspector() -> None:
                     "state matches our request": "yes" if d["state_matches_request"] else "no",
                 }), unsafe_allow_html=True)
 
-        with tabs[2]:
+        if sel == 2:
             entry = stage("exchange")
             if entry:
                 d = entry["data"]
@@ -921,7 +1115,7 @@ def render_lifecycle_inspector() -> None:
                     st.code(json.dumps(parts["header"], indent=2), language="json")
                     st.code(json.dumps(parts["payload"], indent=2), language="json")
 
-        with tabs[3]:
+        if sel == 3:
             entry = stage("claims")
             if entry:
                 d = entry["data"]
@@ -940,7 +1134,7 @@ def render_lifecycle_inspector() -> None:
                 st.markdown("**Every claim in the ID token**")
                 st.code(json.dumps(d["all_id_token_claims"], indent=2, default=str), language="json")
 
-        with tabs[4]:
+        if sel == 4:
             entry = stage("graph")
             if entry:
                 d = entry["data"]
@@ -957,7 +1151,7 @@ def render_lifecycle_inspector() -> None:
                     st.markdown("**Response body**")
                     st.code(json.dumps(d["response_body"], indent=2, default=str), language="json")
 
-        with tabs[5]:
+        if sel == 5:
             entry = stage("mint")
             if entry:
                 d = entry["data"]
@@ -980,7 +1174,7 @@ def render_lifecycle_inspector() -> None:
                     "private key": d["private_key_path"],
                 }), unsafe_allow_html=True)
 
-        with tabs[6]:
+        if sel == 6:
             if not calls:
                 st.caption("Send a message and the request and response land here.")
             else:
@@ -1025,7 +1219,7 @@ def signin_button(url: str) -> str:
     mark = Path(__file__).with_name("assets") / "entra-mark.png"
     logo = f'<img src="{data_uri(str(mark))}" alt="">' if mark.exists() else ""
     return (
-        f'<div class="signin-wrap"><a class="signin" href="{html.escape(url, quote=True)}" '
+        f'<div class="signin-wrap"><a class="btn btn-ghost" href="{html.escape(url, quote=True)}" '
         f'target="_self">{logo}Sign in with Microsoft Entra ID</a></div>'
     )
 
@@ -1060,7 +1254,9 @@ body {
 .tab.on { color: __SIGNAL__; border-color: __SIGNAL__; background: __SIGNALBG__; }
 .tab:focus-visible { outline: 2px solid __SIGNAL__; outline-offset: 2px; }
 .spacer { flex: 1; }
-svg { width: 100%; height: auto; display: block; }
+/* cap at the natural viewBox width so the frame height stays predictable and the
+   labels never scale past their designed size */
+svg { width: 100%; max-width: 1000px; height: auto; display: block; margin: 0 auto; }
 
 .card { fill: __SURFACE2__; stroke: __LINE__; transition: stroke .35s ease, fill .35s ease; }
 .card.lit { stroke: __FAINT__; fill: rgba(92,101,119,.14); }
@@ -1290,7 +1486,9 @@ def render_flow_diagram(height: int = 560) -> None:
         .replace("__LINE__", p["line"]).replace("__LINELIT__", p["line-lit"])
         .replace("__TEXT__", p["text"]).replace("__DIM__", p["text-dim"])
         .replace("__FAINT__", p["text-faint"])
-        .replace("__SIGNAL__", p["signal"]).replace("__SIGNALBG__", p["signal-bg"])
+        # signal-text, not signal: the diagram paints coral onto small labels, where the
+        # brand value only reaches 3.2:1 against white.
+        .replace("__SIGNAL__", p["signal-text"]).replace("__SIGNALBG__", p["signal-bg"])
         .replace("__TENANT__", esc(short(AZURE_TENANT_ID, 6, 4)))
         .replace("__KID__", esc(short(KID, 6, 4)))
         .replace("__ORG__", esc(short(PORTKEY_ORG_ID, 6, 4)))
@@ -1505,31 +1703,38 @@ if not st.session_state.user:
         AUTH_REQUESTS.pop(stale, None)
 
     st.markdown(signin_button(auth_url), unsafe_allow_html=True)
-    st.markdown(
-        '<div class="topbar"><div class="brand"><i></i>Enterprise AI Access</div>'
-        '<div class="whoami"><span class="tag">not signed in</span></div></div>',
-        unsafe_allow_html=True,
-    )
 
-    # top, not center: expanding the policy grows this row, and centring would slide the
-    # diagram down to match the taller column.
-    intro_col, diagram_col = st.columns([2, 3], vertical_alignment="top")
-    with intro_col:
+    # top, not center: expanding the policy grows the left column, and centring would
+    # slide the pre-flight card down to match it.
+    hero_col, card_col = st.columns([3, 2], vertical_alignment="top")
+    with hero_col:
         st.markdown(
-            """
-<div class="gate">
-  <h1>Nobody here<br>holds an <b>API key</b>.</h1>
-  <p>Sign in with your organization account. Your role and department are read from
-     the directory, sealed into a short-lived signed token, and sent to the AI gateway
-     with every prompt. No API keys are issued to you.</p>
+            f"""
+<div class="hero">
+  <div class="pill-eyebrow"><i></i>Enterprise AI Access &middot; live demo</div>
+  <h1>Real prompts, real models &mdash;<br><em>routed by policy, not by trust.</em></h1>
+  <p>Sign in with your organization account. Your role and department are read from the
+     directory, sealed into a short-lived RS256 credential, and verified by the AI gateway
+     on every prompt. Nobody is issued an API key, and the model you get is decided
+     server side.</p>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="{html.escape(auth_url, quote=True)}" target="_self">
+      Start the demo</a>
+    <a class="btn btn-ghost" href="https://github.com/sergeiudo/AI-Gateway-JWT-Demo"
+       target="_blank" rel="noopener">View the source</a>
+  </div>
 </div>""",
             unsafe_allow_html=True,
         )
-        render_config_panel(expanded=False)
-    with diagram_col:
-        render_flow_diagram(height=430)
+    with card_col:
+        st.markdown(preflight_card(), unsafe_allow_html=True)
+        st.markdown(f'<div class="builtby-wrap">{built_by()}</div>', unsafe_allow_html=True)
 
+    st.markdown(tiles_section(), unsafe_allow_html=True)
+    # svg is capped at its 1000x430 viewBox, so 430 + ~97px of bar and caption.
+    render_flow_diagram(height=540)
     st.markdown(metrics_band(), unsafe_allow_html=True)
+    render_config_panel(expanded=False)
     st.stop()
 
 # ==========================================
@@ -1541,7 +1746,8 @@ policy_label = MODEL_LABELS.get(policy_model, policy_model)
 
 # ---------- Sidebar : identity, policy, controls ----------
 with st.sidebar:
-    st.markdown('<div class="eyebrow">Signed in as</div>', unsafe_allow_html=True)
+    st.markdown(sidebar_facts(user), unsafe_allow_html=True)
+
     st.markdown('<div class="eyebrow">Model</div>', unsafe_allow_html=True)
     selected_label = st.selectbox(
         "Requested model",
@@ -1568,6 +1774,13 @@ with st.sidebar:
         help="How many recent messages travel with each request. Fewer messages cost less.",
     )
 
+    st.markdown(
+        f'<div class="eyebrow">Appearance</div>'
+        + dl([("Theme", esc(MODE), "", ""),
+              ("Switch it", "Toolbar menu, then Settings", "dim", "")]),
+        unsafe_allow_html=True,
+    )
+
     st.markdown('<div class="eyebrow">Session</div>', unsafe_allow_html=True)
     col_clear, col_out = st.columns(2)
     if col_clear.button("Clear", use_container_width=True):
@@ -1580,17 +1793,26 @@ with st.sidebar:
         clear_lifecycle()
         st.rerun()
 
-# ---------- Top bar ----------
+# ---------- Top bar, then the two reference panels, then the conversation ----------
 st.markdown(topbar(user), unsafe_allow_html=True)
-
-# ---------- The session as a trace ----------
-st.markdown(render_trace(user), unsafe_allow_html=True)
-
 render_config_panel(expanded=False)
 render_lifecycle_inspector()
 
-# User Prompt Input
-if prompt := st.chat_input("Send a message"):
+st.markdown(render_trace(user), unsafe_allow_html=True)
+
+if st.session_state.get("last_error"):
+    st.error(f"The gateway refused this request. {st.session_state.last_error}")
+
+# Deliberately not st.chat_input: that renders into Streamlit's fixed bottom container,
+# which re-scrolls the page whenever content height changes — so opening a panel above
+# would jump you to the end. An in-flow form has no such behaviour.
+with st.form("ask", clear_on_submit=True, border=False):
+    msg_col, send_col = st.columns([8, 1], vertical_alignment="bottom")
+    prompt = msg_col.text_input("Message", placeholder="Ask something…",
+                                label_visibility="collapsed")
+    submitted = send_col.form_submit_button("Send", use_container_width=True)
+
+if submitted and prompt.strip():
     st.session_state.last_error = None
     st.session_state.messages.append({"role": "user", "content": prompt})
 

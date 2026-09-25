@@ -1,37 +1,40 @@
 [theme]
-base = "dark"
-primaryColor = "#FFB020"
-backgroundColor = "#0A0C10"
-secondaryBackgroundColor = "#121620"
-textColor = "#EDEFF3"
-borderColor = "#232A38"
-baseRadius = "2px"
-font = "IBM Plex Sans, system-ui, sans-serif"
+base = "light"
+primaryColor = "#FA582D"
+backgroundColor = "#FAFAF9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0F1115"
+borderColor = "#E7E7E4"
+baseRadius = "9px"
+buttonRadius = "999px"
+font = "Inter, system-ui, sans-serif"
 codeFont = "JetBrains Mono, ui-monospace, monospace"
 
-[theme.dark]
-primaryColor = "#FFB020"
-backgroundColor = "#0A0C10"
-secondaryBackgroundColor = "#121620"
-textColor = "#EDEFF3"
-borderColor = "#232A38"
-codeBackgroundColor = "#0D1016"
-
 [theme.light]
-primaryColor = "#A85D00"
-backgroundColor = "#F7F7F5"
+primaryColor = "#FA582D"
+backgroundColor = "#FAFAF9"
 secondaryBackgroundColor = "#FFFFFF"
-textColor = "#17181C"
-borderColor = "#E3E3DE"
-codeBackgroundColor = "#F0F0EC"
+textColor = "#0F1115"
+borderColor = "#E7E7E4"
+codeBackgroundColor = "#F4F4F2"
 
-[theme.dark.sidebar]
-backgroundColor = "#0D1016"
-borderColor = "#232A38"
+[theme.dark]
+primaryColor = "#FF7A52"
+backgroundColor = "#0F1115"
+secondaryBackgroundColor = "#181B21"
+textColor = "#F5F6F7"
+borderColor = "#282D36"
+codeBackgroundColor = "#14171C"
 
 [theme.light.sidebar]
-backgroundColor = "#F0F0EC"
-borderColor = "#E3E3DE"
+backgroundColor = "#F4F4F2"
+borderColor = "#E7E7E4"
+
+[theme.dark.sidebar]
+backgroundColor = "#14171C"
+borderColor = "#282D36"
 
 [client]
-toolbarMode = "minimal"
+# "viewer" keeps the theme toggle reachable under the toolbar menu while hiding the
+# developer controls. "minimal" removes the menu entirely, taking the toggle with it.
+toolbarMode = "viewer"
